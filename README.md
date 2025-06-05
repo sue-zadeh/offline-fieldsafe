@@ -1,4 +1,4 @@
-<h1 align="center">CVNZ Admin Dashboard</h1>
+<h1 align="center">CVNZ Admin Dashboard-off line access</h1>
 
 ## Tech Stack
 
