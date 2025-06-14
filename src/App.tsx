@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { LoadScript } from '@react-google-maps/api'
 // import { Modal, Button } from 'react-bootstrap'
-
+import { getUnsyncedItems, clearSyncedItems } from './utils/localDB';
 import Navbar from './components/navbar'
 import Login from './components/login'
 import Home from './components/home'
@@ -52,6 +52,31 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+  // --------------------------------------------
+  // Sync offline data when online
+  useEffect(() => {
+  const syncData = async () => {
+    if (navigator.onLine) {
+      const items = await getUnsyncedItems();
+
+      for (const item of items) {
+        await fetch(`/api/${item.type}s`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.data),
+        });
+      }
+
+      await clearSyncedItems();
+      console.log('✅ Offline data synced.');
+    }
+  };
+
+  window.addEventListener('online', syncData);
+  syncData();
+
+  return () => window.removeEventListener('online', syncData);
+}, []);
 
   // ------------------------------------------
   // Inactivity watchers

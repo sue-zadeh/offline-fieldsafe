@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { saveOfflineItem } from '../utils/localDB';
 import axios from 'axios'
 
 interface AddvolunteerProps {
@@ -73,43 +74,51 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
-
+//====================================
   const handleSubmit = async () => {
-    const validationError = validateForm()
-    if (validationError) {
-      setNotification(validationError)
-      return
-    }
-    if (formData.phone === formData.emergencyContactNumber) {
-      setNotification(
-        'Phone number and Emergency Contact Number must be different.'
-      )
-      return
-    }
-    const isEmailTaken = users.some(
-      (user) => user.email === formData.email && user.id !== formData.id
-    )
-    if (isEmailTaken) {
-      setNotification('The email address is already in use.')
-      return
-    }
+  const validationError = validateForm()
+  if (validationError) {
+    setNotification(validationError)
+    return
+  }
 
-    try {
+  if (formData.phone === formData.emergencyContactNumber) {
+    setNotification('Phone number and Emergency Contact Number must be different.')
+    return
+  }
+
+  const isEmailTaken = users.some(
+    (user) => user.email === formData.email && user.id !== formData.id
+  )
+  if (isEmailTaken) {
+    setNotification('The email address is already in use.')
+    return
+  }
+
+  try {
+    if (navigator.onLine) {
+      //  If online: **** send to backend ******
       if (formData.id) {
         await axios.put(`/api/volunteers/${formData.id}`, formData)
         setNotification(`Editing ${formData.firstname} was successful!`)
       } else {
         await axios.post('/api/volunteers', formData)
-        setNotification(
-          `${formData.firstname} ${formData.lastname} added successfully!`
-        )
+        setNotification(`${formData.firstname} ${formData.lastname} added successfully!`)
       }
-      setTimeout(() => navigate('/volunteer'), 1000)
-    } catch (error) {
-      console.error('Error saving user:', error)
-      setNotification('Failed to save user.')
+    } else {
+      // *** If offline: save locally *****
+      await saveOfflineItem({ type: 'volunteer', data: formData })
+      setNotification('You are offline. The data has been saved and will sync later.')
     }
+
+    setTimeout(() => navigate('/volunteer'), 1000)
+  } catch (error) {
+    console.error('Error saving user:', error)
+    setNotification('Failed to save user.')
   }
+}
+//======================================
+// frontend
 
   return (
     <div
