@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import axios, { AxiosError } from 'axios'
 import { GoogleMap, Marker, Autocomplete } from '@react-google-maps/api'
+import MapLoader from './MapLoader'
 import AddObjectives from './addobjective'
 import AddRisk from './addrisk'
 import AddHazard from './addhazard'
@@ -660,31 +661,35 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
 
                 <div className="mb-3">
                   <Form.Label>Map Location</Form.Label>
-                  <div style={{ width: '100%', height: '200px' }}>
-                    <GoogleMap
-                      mapContainerStyle={containerStyle}
-                      center={mapCenter}
-                      zoom={12}
-                    >
-                      <Marker position={markerPos} />
-                    </GoogleMap>
-                  </div>
+                  <MapLoader>
+                    <div style={{ width: '100%', height: '200px' }}>
+                      <GoogleMap
+                        mapContainerStyle={containerStyle}
+                        center={mapCenter}
+                        zoom={12}
+                      >
+                        <Marker position={markerPos} />
+                      </GoogleMap>
+                    </div>
+                  </MapLoader>
                 </div>
 
                 <Form.Group controlId="location" className="mb-3">
-                  <Form.Label>Project Location</Form.Label>
-                  <Autocomplete
-                    onLoad={(auto) => (autocompleteRef.current = auto)}
-                    onPlaceChanged={handlePlaceChanged}
-                  >
-                    <Form.Control
-                      required
-                      type="text"
-                      placeholder="Type an address"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                    />
-                  </Autocomplete>
+                  <MapLoader>
+                    <Form.Label>Project Location</Form.Label>
+                    <Autocomplete
+                      onLoad={(auto) => (autocompleteRef.current = auto)}
+                      onPlaceChanged={handlePlaceChanged}
+                    >
+                      <Form.Control
+                        required
+                        type="text"
+                        placeholder="Type an address"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                      />
+                    </Autocomplete>
+                  </MapLoader>
                 </Form.Group>
 
                 {/* If editing => show two buttons: "Save Changes" and "Save as New Project" */}

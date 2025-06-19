@@ -13,7 +13,7 @@ import {
   BsCalendarCheck,
   BsPersonFillAdd,
 } from 'react-icons/bs'
-import LogoLil from '../assets/logo-lil.png'
+// import LogoLil from '/assets/logo-lil.png'
 
 interface NavbarProps {
   onLogout: () => void
@@ -63,7 +63,7 @@ const Navbar: React.FC<NavbarProps> = ({
           onClick={handleLinkClick}
         >
           <img
-            src={LogoLil}
+            src="/assets/logo-lil.png"
             alt="logo"
             className="img-fluid me-2"
             style={{ maxHeight: '52px' }}

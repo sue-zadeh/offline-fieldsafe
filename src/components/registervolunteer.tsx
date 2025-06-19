@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { saveOfflineItem } from '../utils/localDB';
+import { saveOfflineItem } from '../utils/localDB'
 import axios from 'axios'
 
 interface AddvolunteerProps {
@@ -38,7 +38,10 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
     if (location.state?.user) {
       setFormData(location.state.user)
     }
-    axios.get('/api/volunteers').then((response) => setUsers(response.data))
+    axios
+      .get('/api/volunteers')
+      .then((response) => setUsers(response.data))
+      .catch(() => setUsers([]))
   }, [location])
 
   const validateForm = (): string | null => {
@@ -74,51 +77,57 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
-//====================================
+
   const handleSubmit = async () => {
-  const validationError = validateForm()
-  if (validationError) {
-    setNotification(validationError)
-    return
-  }
-
-  if (formData.phone === formData.emergencyContactNumber) {
-    setNotification('Phone number and Emergency Contact Number must be different.')
-    return
-  }
-
-  const isEmailTaken = users.some(
-    (user) => user.email === formData.email && user.id !== formData.id
-  )
-  if (isEmailTaken) {
-    setNotification('The email address is already in use.')
-    return
-  }
-
-  try {
-    if (navigator.onLine) {
-      //  If online: **** send to backend ******
-      if (formData.id) {
-        await axios.put(`/api/volunteers/${formData.id}`, formData)
-        setNotification(`Editing ${formData.firstname} was successful!`)
-      } else {
-        await axios.post('/api/volunteers', formData)
-        setNotification(`${formData.firstname} ${formData.lastname} added successfully!`)
-      }
-    } else {
-      // *** If offline: save locally *****
-      await saveOfflineItem({ type: 'volunteer', data: formData })
-      setNotification('You are offline. The data has been saved and will sync later.')
+    const validationError = validateForm()
+    if (validationError) {
+      setNotification(validationError)
+      return
     }
 
-    setTimeout(() => navigate('/volunteer'), 1000)
-  } catch (error) {
-    console.error('Error saving user:', error)
-    setNotification('Failed to save user.')
+    if (formData.phone === formData.emergencyContactNumber) {
+      setNotification(
+        'Phone number and Emergency Contact Number must be different.'
+      )
+      return
+    }
+
+    const isEmailTaken = users.some(
+      (user) => user.email === formData.email && user.id !== formData.id
+    )
+    if (isEmailTaken) {
+      setNotification('The email address is already in use.')
+      return
+    }
+
+    try {
+      if (navigator.onLine) {
+        if (formData.id) {
+          await axios.put(`/api/volunteers/${formData.id}`, formData)
+          setNotification(`Editing ${formData.firstname} was successful!`)
+        } else {
+          await axios.post('/api/volunteers', formData)
+          setNotification(
+            `${formData.firstname} ${formData.lastname} added successfully!`
+          )
+        }
+      } else {
+        await saveOfflineItem({
+          type: 'volunteer',
+          data: formData,
+        })
+        setNotification(
+          'You’re offline. The data was saved locally and will sync when back online.'
+        )
+      }
+      setTimeout(() => navigate('/volunteer'), 1000)
+    } catch (error) {
+      console.error('Error saving user:', error)
+      setNotification('Failed to save user.')
+    }
   }
-}
-//======================================
-// frontend
+  //======================================
+  // frontend
 
   return (
     <div

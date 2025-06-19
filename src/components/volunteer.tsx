@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
+import { getSyncedItems, OfflineItem } from '../utils/localDB'
 
 // Role type
 type Role = 'Volunteer'
@@ -20,33 +21,34 @@ interface VolunteerProps {
 }
 
 const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
-  // Full list of Team Leaders
   const [allLeads, setAllLeads] = useState<User[]>([])
-
-  // Search results
   const [searchResults, setSearchResults] = useState<User[]>([])
-
-  //The user's search text
   const [searchQuery, setSearchQuery] = useState('')
-
-  // Notification (success/fail messages)
   const [notification, setNotification] = useState<string | null>(null)
-
   const navigate = useNavigate()
 
-  //------------------------------------------------------------
-  // Fetch ALL "Team Leader" records on mount
   const fetchAllLeads = async () => {
     try {
-      const res = await axios.get('/api/volunteers', {
-        params: { role: 'Volunteer' },
-      })
-      const sorted = res.data.sort((a: User, b: User) =>
-        a.firstname.localeCompare(b.firstname)
-      )
-      setAllLeads(sorted)
+      if (navigator.onLine) {
+        const res = await axios.get('/api/volunteers', {
+          params: { role: 'Volunteer' },
+        })
+        const sorted = res.data.sort((a: User, b: User) =>
+          a.firstname.localeCompare(b.firstname)
+        )
+        setAllLeads(sorted)
+      } else {
+        const allItems: OfflineItem[] = await getSyncedItems()
+        const offlineVolunteers = allItems
+          .filter((item) => item.type === 'volunteer')
+          .map((item) => item.data as User)
+        const sorted = offlineVolunteers.sort((a: User, b: User) =>
+          a.firstname.localeCompare(b.firstname)
+        )
+        setAllLeads(sorted)
+      }
     } catch (err) {
-      console.error('Error fetching Team Leaders:', err)
+      console.error('Error fetching Volunteers:', err)
       setNotification('Failed to load data.')
     }
   }
@@ -55,9 +57,6 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
     fetchAllLeads()
   }, [])
 
-  //------------------------------------------------------------
-  // Auto-search as the user types (immediate)
-  //fetch filtered list
   useEffect(() => {
     const doSearch = async () => {
       if (!searchQuery.trim()) {
@@ -66,29 +65,36 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       }
       try {
         const res = await axios.get('/api/volunteers', {
-          params: { role: 'Team Leader', search: searchQuery.trim() },
+          params: { role: 'Volunteer', search: searchQuery.trim() },
         })
         setSearchResults(res.data)
       } catch (error) {
-        console.error('Error searching Team Leaders:', error)
+        console.error('Error searching Volunteers:', error)
         setNotification('Failed to load data.')
+        if (!navigator.onLine) {
+          const allItems: OfflineItem[] = await getSyncedItems()
+          const offlineVolunteers = allItems
+            .filter((item) => item.type === 'volunteer')
+            .map((item) => item.data as User)
+          const filtered = offlineVolunteers.filter((user) =>
+            `${user.firstname} ${user.lastname} ${user.email}`
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase())
+          )
+          setSearchResults(filtered)
+        }
       }
     }
-
     doSearch()
-  }, [searchQuery]) // runs on every change of searchQuery
+  }, [searchQuery])
 
-  //------------------------------------------------------------
-  // Delete user
   const handleDelete = async (userId: number) => {
-    // Find the volunteer being deleted
     const userToDelete = allLeads.find((user) => user.id === userId)
     if (!userToDelete) {
       setNotification('Volunteer not found.')
       return
     }
 
-    // Show confirmation dialog with the volunteer's full name
     if (
       !window.confirm(
         `Are you sure you want to delete ${userToDelete.firstname} ${userToDelete.lastname}?`
@@ -97,15 +103,14 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       return
 
     try {
-      // Delete request
-      await axios.delete(`/api/volunteers/${userId}`)
-
-      // Success notification with the volunteer's full name
-      setNotification(
-        `${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`
-      )
-
-      // Refresh the list of volunteers
+      if (navigator.onLine) {
+        await axios.delete(`/api/volunteers/${userId}`)
+        setNotification(
+          `${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`
+        )
+      } else {
+        setNotification('Delete action queued for online sync.')
+      }
       fetchAllLeads()
 
       // If there is a search query, refresh the search results

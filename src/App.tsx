@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
-import { LoadScript } from '@react-google-maps/api'
+// import { LoadScript } from '@react-google-maps/api'
 // import { Modal, Button } from 'react-bootstrap'
-import { getUnsyncedItems, clearSyncedItems } from './utils/localDB';
+import { getSyncedItems, clearSyncedItems } from './utils/localDB'
 import Navbar from './components/navbar'
 import Login from './components/login'
 import Home from './components/home'
@@ -23,7 +23,7 @@ import Report from './components/report'
 import ActivityTabs from './components/activitytabs'
 // import ParentLayout from './components/parentlayout'
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+// const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -55,28 +55,30 @@ const App: React.FC = () => {
   // --------------------------------------------
   // Sync offline data when online
   useEffect(() => {
-  const syncData = async () => {
-    if (navigator.onLine) {
-      const items = await getUnsyncedItems();
-
-      for (const item of items) {
-        await fetch(`/api/${item.type}s`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item.data),
-        });
+    const syncData = async () => {
+      if (navigator.onLine) {
+        try {
+          const items = await getSyncedItems()
+          for (const item of items) {
+            await fetch(`/api/${item.type}s`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(item.data),
+            })
+            await clearSyncedItems() // Clear only after successful sync
+          }
+          console.log('✅ Offline data synced.')
+        } catch (error) {
+          console.error('Sync failed:', error)
+        }
       }
-
-      await clearSyncedItems();
-      console.log('✅ Offline data synced.');
     }
-  };
 
-  window.addEventListener('online', syncData);
-  syncData();
+    window.addEventListener('online', syncData)
+    syncData()
 
-  return () => window.removeEventListener('online', syncData);
-}, []);
+    return () => window.removeEventListener('online', syncData)
+  }, [])
 
   // ------------------------------------------
   // Inactivity watchers
@@ -221,11 +223,11 @@ const App: React.FC = () => {
           <div className="d-flex flex-grow-1">
             <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
             <div style={mainContentStyle}>
-              <LoadScript
-                googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+              {/* <LoadScript */}
+                {/* googleMapsApiKey={GOOGLE_MAPS_API_KEY}
                 libraries={['places']}
                 version="beta"
-              >
+              > */}
                 <Routes>
                   {/* If user is logged in and goes to "/", let's redirect them to /home */}
                   <Route path="/" element={<Navigate to="/home" replace />} />
@@ -296,7 +298,7 @@ const App: React.FC = () => {
                   {/* 404 fallback */}
                   <Route path="*" element={<div>404 Not Found</div>} />
                 </Routes>
-              </LoadScript>
+              {/* </LoadScript> */}
             </div>
           </div>
         </div>

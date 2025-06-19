@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { Form, Button, Row, Col, Card, Modal } from 'react-bootstrap'
 import { GoogleMap, Marker } from '@react-google-maps/api'
+import MapLoader from './MapLoader'
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 
 interface ProjectOption {
@@ -412,13 +413,15 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
             <Row className="mb-3">
               <Col md={6}>
                 <Form.Group controlId="location">
-                  <Form.Label>Location (auto-filled)</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="projectLocation"
-                    value={activity.projectLocation || ''}
-                    readOnly
-                  />
+                  <MapLoader>
+                    <Form.Label>Location (auto-filled)</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="projectLocation"
+                      value={activity.projectLocation || ''}
+                      readOnly
+                    />
+                  </MapLoader>
                 </Form.Group>
               </Col>
               <Col md={6}>
@@ -438,13 +441,15 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
 
             {/* Map */}
             <div className="mb-3">
-              <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={mapCenter}
-                zoom={12}
-              >
-                <Marker position={markerPos} />
-              </GoogleMap>
+              <MapLoader placeholderHeight={220}>
+                <GoogleMap
+                  mapContainerStyle={containerStyle}
+                  center={mapCenter}
+                  zoom={12}
+                >
+                  <Marker position={markerPos} />
+                </GoogleMap>
+              </MapLoader>
             </div>
 
             {/* Notes */}
