@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { saveOfflineItem } from '../utils/localDB'
+import { queueOffline } from '../utils/localDB'
 import axios from 'axios'
 
 interface AddvolunteerProps {
@@ -77,7 +77,9 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
-
+  // =====================================
+  // handleSubmit
+  // =====================================
   const handleSubmit = async () => {
     const validationError = validateForm()
     if (validationError) {
@@ -102,30 +104,34 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
 
     try {
       if (navigator.onLine) {
-        if (formData.id) {
-          await axios.put(`/api/volunteers/${formData.id}`, formData)
-          setNotification(`Editing ${formData.firstname} was successful!`)
-        } else {
-          await axios.post('/api/volunteers', formData)
-          setNotification(
-            `${formData.firstname} ${formData.lastname} added successfully!`
-          )
+        try {
+          if (formData.id) {
+            await axios.put(`/api/volunteers/${formData.id}`, formData)
+            setNotification(`Editing ${formData.firstname} was successful!`)
+          } else {
+            await axios.post('/api/volunteers', formData)
+            setNotification(
+              `${formData.firstname} ${formData.lastname} added successfully!`
+            )
+          }
+        } catch (err) {
+          // Lost connection during request
+          console.warn('⚠️ Network error, saving offline')
+          await queueOffline({ type: 'volunteer', data: formData })
+          setNotification('⚠️ Network error. Data saved locally and will sync.')
         }
       } else {
-        await saveOfflineItem({
-          type: 'volunteer',
-          data: formData,
-        })
-        setNotification(
-          'You’re offline. The data was saved locally and will sync when back online.'
-        )
+        await queueOffline({ type: 'volunteer', data: formData })
+        setNotification('🕸️ You are offline. Data saved locally for sync.')
       }
+
       setTimeout(() => navigate('/volunteer'), 1000)
     } catch (error) {
-      console.error('Error saving user:', error)
+      console.error('❌ Unexpected error saving user:', error)
       setNotification('Failed to save user.')
     }
   }
+
   //======================================
   // frontend
 

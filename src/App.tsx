@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 // import { LoadScript } from '@react-google-maps/api'
 // import { Modal, Button } from 'react-bootstrap'
-import { getSyncedItems, clearSyncedItems } from './utils/localDB'
+import { replayQueue } from './utils/localDB'
 import Navbar from './components/navbar'
 import Login from './components/login'
 import Home from './components/home'
@@ -55,31 +55,10 @@ const App: React.FC = () => {
   // --------------------------------------------
   // Sync offline data when online
   useEffect(() => {
-    const syncData = async () => {
-      if (navigator.onLine) {
-        try {
-          const items = await getSyncedItems()
-          for (const item of items) {
-            await fetch(`/api/${item.type}s`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(item.data),
-            })
-            await clearSyncedItems() // Clear only after successful sync
-          }
-          console.log('✅ Offline data synced.')
-        } catch (error) {
-          console.error('Sync failed:', error)
-        }
-      }
-    }
-
-    window.addEventListener('online', syncData)
-    syncData()
-
-    return () => window.removeEventListener('online', syncData)
+    window.addEventListener('online', replayQueue)
+    replayQueue()
+    return () => window.removeEventListener('online', replayQueue)
   }, [])
-
   // ------------------------------------------
   // Inactivity watchers
   useEffect(() => {
@@ -224,80 +203,78 @@ const App: React.FC = () => {
             <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
             <div style={mainContentStyle}>
               {/* <LoadScript */}
-                {/* googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+              {/* googleMapsApiKey={GOOGLE_MAPS_API_KEY}
                 libraries={['places']}
                 version="beta"
               > */}
-                <Routes>
-                  {/* If user is logged in and goes to "/", let's redirect them to /home */}
-                  <Route path="/" element={<Navigate to="/home" replace />} />
+              <Routes>
+                {/* If user is logged in and goes to "/", let's redirect them to /home */}
+                <Route path="/" element={<Navigate to="/home" replace />} />
 
-                  <Route
-                    path="/home"
-                    element={<Home isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/registerroles"
-                    element={<Registerroles isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/groupadmin"
-                    element={<Groupadmin isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/fieldstaff"
-                    element={<Fieldstaff isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/teamlead"
-                    element={<Teamlead isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/registervolunteer"
-                    element={
-                      <Registervolunteer isSidebarOpen={isSidebarOpen} />
-                    }
-                  />
-                  <Route
-                    path="/volunteer"
-                    element={<Volunteer isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/AddProject"
-                    element={<AddProject isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/Addobjective"
-                    element={<AddObjective isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/SearchProject"
-                    element={<SearchProject isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/addrisk"
-                    element={<AddRisk isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/addhazard"
-                    element={<AddHazard isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/activity-notes"
-                    element={<ActivityTabs isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/searchactivity"
-                    element={<SearchActivity isSidebarOpen={isSidebarOpen} />}
-                  />
-                  <Route
-                    path="/report"
-                    element={<Report isSidebarOpen={isSidebarOpen} />}
-                  />
+                <Route
+                  path="/home"
+                  element={<Home isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/registerroles"
+                  element={<Registerroles isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/groupadmin"
+                  element={<Groupadmin isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/fieldstaff"
+                  element={<Fieldstaff isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/teamlead"
+                  element={<Teamlead isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/registervolunteer"
+                  element={<Registervolunteer isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/volunteer"
+                  element={<Volunteer isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/AddProject"
+                  element={<AddProject isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/Addobjective"
+                  element={<AddObjective isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/SearchProject"
+                  element={<SearchProject isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/addrisk"
+                  element={<AddRisk isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/addhazard"
+                  element={<AddHazard isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/activity-notes"
+                  element={<ActivityTabs isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/searchactivity"
+                  element={<SearchActivity isSidebarOpen={isSidebarOpen} />}
+                />
+                <Route
+                  path="/report"
+                  element={<Report isSidebarOpen={isSidebarOpen} />}
+                />
 
-                  {/* 404 fallback */}
-                  <Route path="*" element={<div>404 Not Found</div>} />
-                </Routes>
+                {/* 404 fallback */}
+                <Route path="*" element={<div>404 Not Found</div>} />
+              </Routes>
               {/* </LoadScript> */}
             </div>
           </div>
