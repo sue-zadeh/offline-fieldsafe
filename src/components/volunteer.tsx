@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { getSyncedItems, OfflineItem } from '../utils/localDB'
+import { getSyncedItems, OfflineItem, replayQueue } from '../utils/localDB'
 
 // Role type
 type Role = 'Volunteer'
@@ -26,30 +26,27 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [notification, setNotification] = useState<string | null>(null)
   const navigate = useNavigate()
-
+  ///================================================
+  // online / offline mode
   const fetchAllLeads = async () => {
     try {
-      if (navigator.onLine) {
-        const res = await axios.get('/api/volunteers', {
-          params: { role: 'Volunteer' },
-        })
-        const sorted = res.data.sort((a: User, b: User) =>
-          a.firstname.localeCompare(b.firstname)
-        )
-        setAllLeads(sorted)
-      } else {
-        const allItems: OfflineItem[] = await getSyncedItems()
-        const offlineVolunteers = allItems
-          .filter((item) => item.type === 'volunteer')
-          .map((item) => item.data as User)
-        const sorted = offlineVolunteers.sort((a: User, b: User) =>
-          a.firstname.localeCompare(b.firstname)
-        )
-        setAllLeads(sorted)
-      }
+      const res = await axios.get('/api/volunteers', {
+        params: { role: 'Volunteer' },
+      })
+      const sorted = res.data.sort((a: User, b: User) =>
+        a.firstname.localeCompare(b.firstname)
+      )
+      setAllLeads(sorted)
     } catch (err) {
-      console.error('Error fetching Volunteers:', err)
-      setNotification('Failed to load data.')
+      console.warn('🌐 API failed, fallback to offline IndexedDB')
+      const allItems: OfflineItem[] = await getSyncedItems()
+      const offlineVolunteers = allItems
+        .filter((item) => item.type === 'volunteer')
+        .map((item) => item.data as User)
+      const sorted = offlineVolunteers.sort((a: User, b: User) =>
+        a.firstname.localeCompare(b.firstname)
+      )
+      setAllLeads(sorted)
     }
   }
 
@@ -57,6 +54,24 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
     fetchAllLeads()
   }, [])
 
+  //-----------------------
+  // Automatically call replayQueue() when online
+  useEffect(() => {
+    const syncIfOnline = async () => {
+      if (navigator.onLine) {
+        await replayQueue()
+      }
+    }
+
+    window.addEventListener('online', syncIfOnline)
+    syncIfOnline()
+
+    return () => {
+      window.removeEventListener('online', syncIfOnline)
+    }
+  }, [])
+
+  //==============================================
   useEffect(() => {
     const doSearch = async () => {
       if (!searchQuery.trim()) {
