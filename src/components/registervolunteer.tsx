@@ -115,12 +115,12 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
             )
           }
         } catch (err) {
-          // Lost connection during request
           console.warn('⚠️ Network error, saving offline')
           await queueOffline({ type: 'volunteer', data: formData })
           setNotification('⚠️ Network error. Data saved locally and will sync.')
         }
       } else {
+        console.log('💾 Saving offline to IndexedDB')
         await queueOffline({ type: 'volunteer', data: formData })
         setNotification('🕸️ You are offline. Data saved locally for sync.')
       }

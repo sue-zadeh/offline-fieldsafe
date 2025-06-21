@@ -11,7 +11,7 @@ export interface OfflineItem {
 const DB_NAME = 'FieldSafeDB'
 const STORE_NAME = 'offline-data'
 
-// Open database and store
+// Open or upgrade DB
 async function getDB() {
   return await openDB(DB_NAME, 1, {
     upgrade(db) {
@@ -25,7 +25,7 @@ async function getDB() {
   })
 }
 
-// Save data locally when offline
+// Save new unsynced data
 export async function saveOfflineItem(item: OfflineItem) {
   const db = await getDB()
   await db.add(STORE_NAME, {
@@ -35,21 +35,22 @@ export async function saveOfflineItem(item: OfflineItem) {
   })
 }
 
+// ✅ Alias (required by registervolunteer.tsx)
 export const queueOffline = saveOfflineItem
 
-// Get all offline items
+// Get all items (for syncing or viewing)
 export async function getSyncedItems(): Promise<OfflineItem[]> {
   const db = await getDB()
   return await db.getAll(STORE_NAME)
 }
 
-// Remove item after syncing
+// Delete after syncing
 export async function deleteOfflineItem(id: number) {
   const db = await getDB()
   await db.delete(STORE_NAME, id)
 }
 
-// Sync all unsynced data when back online
+// Sync items with the server
 export async function replayQueue() {
   const items = await getSyncedItems()
   for (const row of items) {

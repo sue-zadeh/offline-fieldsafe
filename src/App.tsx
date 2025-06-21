@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 // import { LoadScript } from '@react-google-maps/api'
 // import { Modal, Button } from 'react-bootstrap'
 import { replayQueue } from './utils/localDB'
+import { useNetworkStatus } from './hooks/useNetworkStatus'
 import Navbar from './components/navbar'
 import Login from './components/login'
 import Home from './components/home'
@@ -42,6 +43,8 @@ const App: React.FC = () => {
   // references for timeouts so we can clear them
   const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const isOnline = useNetworkStatus()
 
   // ------------------------------------------
   // handle window resize for sidebar responsiveness
@@ -60,6 +63,8 @@ const App: React.FC = () => {
     return () => window.removeEventListener('online', replayQueue)
   }, [])
   // ------------------------------------------
+
+  // -------------------------------------------
   // Inactivity watchers
   useEffect(() => {
     const startTimers = () => {
@@ -187,6 +192,13 @@ const App: React.FC = () => {
       {/* If just logged out, show a success message */}
       {logoutMessage && (
         <div className="alert alert-success text-center">{logoutMessage}</div>
+      )}
+      {/* Offline Banner Goes Here */}
+      {!isOnline && (
+        <div className="alert alert-warning text-center">
+          🕸️ You are offline. Any new data will be stored locally and synced
+          later.
+        </div>
       )}
 
       {/* If NOT logged in => show Login alone; else => show everything else */}

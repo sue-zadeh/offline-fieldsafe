@@ -11,7 +11,7 @@ export default defineConfig({
         'favicon.svg',
         'robots.txt',
         'logo0.png',
-        'assets/icons/*',
+        // REMOVE: 'assets/icons/*' to avoid conflict
       ],
       manifest: {
         name: 'FieldSafe',
@@ -19,7 +19,7 @@ export default defineConfig({
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',
-        theme_color: '#0a6e2c',
+        theme_color: '#0a0e2c',
         icons: [
           {
             src: '/assets/icons/icon-192x192.png',
@@ -35,10 +35,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,ico}'],
-        navigateFallback: '/index.html',
+        navigateFallback: '/offline.html',
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/fonts\.g(oogleapis|static)\.com\/.*/i,
+            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
             options: { cacheName: 'google-fonts' },
           },
@@ -46,6 +46,11 @@ export default defineConfig({
             urlPattern: /\/assets\/icons\/.*\.png$/i,
             handler: 'CacheFirst',
             options: { cacheName: 'app-icons' },
+          },
+          {
+            urlPattern: /^\/api\/.*$/i,
+            handler: 'NetworkFirst',
+            options: { cacheName: 'api-cache' },
           },
         ],
       },
