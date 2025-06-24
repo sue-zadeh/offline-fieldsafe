@@ -7,12 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [
-        'favicon.svg',
-        'robots.txt',
-        'logo0.png',
-        // REMOVE: 'assets/icons/*' to avoid conflict
-      ],
+      includeAssets: ['favicon.svg', 'robots.txt', 'logo0.png'],
       manifest: {
         name: 'FieldSafe',
         short_name: 'FieldSafe',
@@ -34,23 +29,29 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,ico}'],
-        navigateFallback: '/offline.html',
+        navigateFallback: '/index.html',
+        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,ico}'], // ✅ CORRECT LOCATION
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+            urlPattern: /^https:\/\/(fonts\.googleapis|gstatic)\.com\//,
             handler: 'CacheFirst',
-            options: { cacheName: 'google-fonts' },
+            options: {
+              cacheName: 'google-fonts',
+            },
           },
           {
             urlPattern: /\/assets\/icons\/.*\.png$/i,
             handler: 'CacheFirst',
-            options: { cacheName: 'app-icons' },
+            options: {
+              cacheName: 'app-icons',
+            },
           },
           {
-            urlPattern: /^\/api\/.*$/i,
+            urlPattern: /\/api\/v.*$/i,
             handler: 'NetworkFirst',
-            options: { cacheName: 'api-cache' },
+            options: {
+              cacheName: 'api-cache',
+            },
           },
         ],
       },

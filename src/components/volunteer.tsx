@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { getSyncedItems, OfflineItem, replayQueue } from '../utils/localDB'
+import { getSyncedItems, OfflineItem, getUnsyncedItems } from '../utils/localDB'
+import { mergeByEmail } from '../utils/mergeHelpers'
 
 // Role type
 type Role = 'Volunteer'
@@ -26,52 +27,40 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [notification, setNotification] = useState<string | null>(null)
   const navigate = useNavigate()
-  ///================================================
+
   // online / offline mode
   const fetchAllLeads = async () => {
-    try {
-      const res = await axios.get('/api/volunteers', {
-        params: { role: 'Volunteer' },
-      })
-      const sorted = res.data.sort((a: User, b: User) =>
-        a.firstname.localeCompare(b.firstname)
-      )
-      setAllLeads(sorted)
-    } catch (err) {
-      console.warn('🌐 API failed, fallback to offline IndexedDB')
-      const allItems: OfflineItem[] = await getSyncedItems()
-      const offlineVolunteers = allItems
-        .filter((item) => item.type === 'volunteer')
-        .map((item) => item.data as User)
-      const sorted = offlineVolunteers.sort((a: User, b: User) =>
-        a.firstname.localeCompare(b.firstname)
-      )
-      setAllLeads(sorted)
+    const synced = await getSyncedItems()
+    const unsynced = await getUnsyncedItems()
+
+    const offlineVolunteers = [...synced, ...unsynced]
+      .filter((item) => item.type === 'volunteer')
+      .map((item) => item.data as User)
+
+    let merged: User[] = []
+
+    if (navigator.onLine) {
+      try {
+        const res = await axios.get('/api/volunteers', {
+          params: { role: 'Volunteer' },
+        })
+        merged = mergeByEmail(res.data, offlineVolunteers)
+      } catch (err) {
+        console.warn('🌐 Online fetch failed. Using offline only.')
+        merged = offlineVolunteers
+      }
+    } else {
+      merged = offlineVolunteers
     }
+
+    const sorted = merged.sort((a, b) => a.firstname.localeCompare(b.firstname))
+    setAllLeads(sorted)
   }
 
   useEffect(() => {
     fetchAllLeads()
   }, [])
 
-  //-----------------------
-  // Automatically call replayQueue() when online
-  useEffect(() => {
-    const syncIfOnline = async () => {
-      if (navigator.onLine) {
-        await replayQueue()
-      }
-    }
-
-    window.addEventListener('online', syncIfOnline)
-    syncIfOnline()
-
-    return () => {
-      window.removeEventListener('online', syncIfOnline)
-    }
-  }, [])
-
-  //==============================================
   useEffect(() => {
     const doSearch = async () => {
       if (!searchQuery.trim()) {
@@ -166,8 +155,11 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         </tr>
       </thead>
       <tbody>
-        {list.map((u) => (
-          <tr key={u.id}>
+{list.map((u) => {
+            const isUnsynced = u.id === 0 // heuristic for unsynced items
+  return (
+    <tr key={u.email} className={isUnsynced ? 'table-warning' : ''}>
+
             <td>
               {u.firstname} {u.lastname}
             </td>
@@ -199,7 +191,8 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
               </button>
             </td>
           </tr>
-        ))}
+        )
+})}
       </tbody>
     </table>
   )

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FaEye, FaEyeSlash } from 'react-icons/fa'
 import axios, { AxiosError } from 'axios'
 import { useNavigate } from 'react-router-dom'
+import { saveOfflineCredentials, getOfflineCredential } from '../utils/authDB'
 
 interface LoginProps {
   onLoginSuccess: () => void
@@ -35,43 +36,53 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setIsLoading(true)
     setError('')
 
-    try {
-      const response = await axios.post('/api/login', { email, password })
+    if (navigator.onLine) {
+      try {
+        const response = await axios.post('/api/login', { email, password })
 
-      if (response.data.message === 'Login successful') {
-        // Store firstname and lastname in localStorage - used for welcome
-        localStorage.setItem('firstname', response.data.firstname)
-        localStorage.setItem('lastname', response.data.lastname)
-        localStorage.setItem('role', response.data.role)
+        if (response.data.message === 'Login successful') {
+          localStorage.setItem('firstname', response.data.firstname)
+          localStorage.setItem('lastname', response.data.lastname)
+          localStorage.setItem('role', response.data.role)
 
-        // "Remember Me"
-        if (rememberMe) {
-          localStorage.setItem('email', email)
+          if (rememberMe) localStorage.setItem('email', email)
+          else localStorage.removeItem('email')
+
+          await saveOfflineCredentials(email.trim().toLowerCase(), password)
+          console.log('✅ Saved credentials offline:', email)
+          try {
+            await saveOfflineCredentials(email.trim().toLowerCase(), password)
+            console.log('✅ Credentials saved offline')
+          } catch (err) {
+            console.error('❌ Failed to save credentials offline:', err)
+          }
+          onLoginSuccess()
+          navigate('/home')
         } else {
-          localStorage.removeItem('email')
+          setError(response.data.message || 'Login failed.')
         }
-        // Tell App we’re logged in
-        onLoginSuccess()
-
-        // Navigate to home page
-        navigate('/home')
-      } else {
-        setError(response.data.message || 'Login failed. Please try again.')
+      } catch (err) {
+        setError('Login failed. Please try again.')
+      } finally {
+        setIsLoading(false)
       }
-    } catch (err) {
-      const axiosError = err as AxiosError<{ message: string }>
-      console.error('Error during login:', axiosError)
-
-      if (axiosError.response?.data?.message) {
-        setError(axiosError.response.data.message)
-      } else {
-        setError('An unexpected error occurred. Please try again.')
+    } else {
+      try {
+        const stored = await getOfflineCredential(email.trim().toLowerCase())
+        console.log('📦 Stored offline credential:', stored)
+        if (stored && stored.password === password) {
+          onLoginSuccess()
+          navigate('/home')
+        } else {
+          setError('Offline login failed. No matching saved credentials.')
+        }
+      } catch (err) {
+        setError('Offline login failed due to storage issue.')
+      } finally {
+        setIsLoading(false)
       }
-    } finally {
-      setIsLoading(false)
     }
   }
-
   const handleForgotPassword = async () => {
     if (!email) {
       setError('Please enter your email.')

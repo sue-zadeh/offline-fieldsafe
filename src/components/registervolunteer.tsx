@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { queueOffline } from '../utils/localDB'
+import { saveOfflineItem } from '../utils/localDB'
 import axios from 'axios'
 
 interface AddvolunteerProps {
@@ -116,12 +116,22 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
           }
         } catch (err) {
           console.warn('⚠️ Network error, saving offline')
-          await queueOffline({ type: 'volunteer', data: formData })
+          await saveOfflineItem({
+            type: 'volunteer',
+            data: formData,
+            synced: false,
+            timestamp: Date.now(),
+          })
           setNotification('⚠️ Network error. Data saved locally and will sync.')
         }
       } else {
         console.log('💾 Saving offline to IndexedDB')
-        await queueOffline({ type: 'volunteer', data: formData })
+        await saveOfflineItem({
+          type: 'volunteer',
+          data: formData,
+          synced: false,
+          timestamp: Date.now(),
+        })
         setNotification('🕸️ You are offline. Data saved locally for sync.')
       }
 
