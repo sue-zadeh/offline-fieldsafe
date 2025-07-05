@@ -51,7 +51,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           await saveOfflineCredentials(email.trim().toLowerCase(), password)
           console.log('✅ Saved credentials offline:', email)
           try {
-            await saveOfflineCredentials(email.trim().toLowerCase(), password)
+            // await saveOfflineCredentials(email.trim().toLowerCase(), password)
             console.log('✅ Credentials saved offline')
           } catch (err) {
             console.error('❌ Failed to save credentials offline:', err)
@@ -69,7 +69,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     } else {
       try {
         const stored = await getOfflineCredential(email.trim().toLowerCase())
-        console.log('📦 Stored offline credential:', stored)
         if (stored && stored.password === password) {
           onLoginSuccess()
           navigate('/home')

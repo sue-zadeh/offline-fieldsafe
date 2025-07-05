@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { getSyncedItems, OfflineItem, getUnsyncedItems } from '../utils/localDB'
+import type { User } from '../types/user'
+
+import {
+  getSyncedItems,
+  getUnsyncedItems,
+  saveSyncedItems,
+  deleteQueuedItem,
+  getQueuedDeletes,
+} from '../utils/localDB'
 import { mergeByEmail } from '../utils/mergeHelpers'
 
-// Role type
-type Role = 'Volunteer'
-type User = {
-  id: number
-  firstname: string
-  lastname: string
-  email: string
-  phone: string
-  emergencyContact: string
-  emergencyContactNumber: string
-  role: Role
-}
+export type Role = 'Volunteer'
 
 interface VolunteerProps {
   isSidebarOpen: boolean
@@ -28,14 +25,16 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
   const [notification, setNotification] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  // online / offline mode
   const fetchAllLeads = async () => {
     const synced = await getSyncedItems()
     const unsynced = await getUnsyncedItems()
+    const queuedDeletes = await getQueuedDeletes()
+    const queuedIds = queuedDeletes.map((item: any) => item.id)
 
-    const offlineVolunteers = [...synced, ...unsynced]
+    const offlineVolunteers: User[] = [...synced, ...unsynced]
       .filter((item) => item.type === 'volunteer')
-      .map((item) => item.data as User)
+      .filter((item) => !queuedIds.includes(item.data.id))
+      .map((item: any) => item.data as User)
 
     let merged: User[] = []
 
@@ -44,7 +43,21 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         const res = await axios.get('/api/volunteers', {
           params: { role: 'Volunteer' },
         })
-        merged = mergeByEmail(res.data, offlineVolunteers)
+
+        const onlineData = res.data.filter(
+          (user: any) => !queuedIds.includes(user.id)
+        )
+        await saveSyncedItems([])
+
+        const wrapped = onlineData.map((data: any) => ({
+          type: 'volunteer',
+          data,
+          synced: true,
+          timestamp: Date.now(),
+        }))
+        await saveSyncedItems(wrapped)
+
+        merged = mergeByEmail(onlineData, offlineVolunteers)
       } catch (err) {
         console.warn('🌐 Online fetch failed. Using offline only.')
         merged = offlineVolunteers
@@ -59,7 +72,23 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
 
   useEffect(() => {
     fetchAllLeads()
+    processQueuedDeletes()
   }, [])
+
+  const processQueuedDeletes = async () => {
+    if (!navigator.onLine) return
+
+    const queued = await getQueuedDeletes()
+    for (const item of queued) {
+      try {
+        await axios.delete(`/api/volunteers/${item.id}`)
+        await deleteQueuedItem(item.id)
+        console.log(`✅ Synced deleted item ID: ${item.id}`)
+      } catch (err) {
+        console.warn(`❌ Failed to sync delete for ID: ${item.id}`)
+      }
+    }
+  }
 
   useEffect(() => {
     const doSearch = async () => {
@@ -67,6 +96,7 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         setSearchResults([])
         return
       }
+
       try {
         const res = await axios.get('/api/volunteers', {
           params: { role: 'Volunteer', search: searchQuery.trim() },
@@ -76,10 +106,11 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         console.error('Error searching Volunteers:', error)
         setNotification('Failed to load data.')
         if (!navigator.onLine) {
-          const allItems: OfflineItem[] = await getSyncedItems()
+          const allItems = await getSyncedItems()
           const offlineVolunteers = allItems
-            .filter((item) => item.type === 'volunteer')
-            .map((item) => item.data as User)
+            .filter((item: any) => item.type === 'volunteer')
+            .map((item: { data: User }) => item.data)
+
           const filtered = offlineVolunteers.filter((user) =>
             `${user.firstname} ${user.lastname} ${user.email}`
               .toLowerCase()
@@ -107,31 +138,24 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       return
 
     try {
-      if (navigator.onLine) {
-        await axios.delete(`/api/volunteers/${userId}`)
-        setNotification(
-          `${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`
-        )
+      await axios.delete(`/api/volunteers/${userId}`)
+      setNotification(
+        `${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`
+      )
+      setAllLeads((prev) => prev.filter((user) => user.id !== userId))
+      setSearchResults((prev) => prev.filter((user) => user.id !== userId))
+    } catch (error: any) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        setNotification('This volunteer was already deleted.')
+        setAllLeads((prev) => prev.filter((user) => user.id !== userId))
+        setSearchResults((prev) => prev.filter((user) => user.id !== userId))
       } else {
-        setNotification('Delete action queued for online sync.')
+        console.error('Error deleting volunteer:', error)
+        setNotification('Failed to delete volunteer.')
       }
-      fetchAllLeads()
-
-      // If there is a search query, refresh the search results
-      if (searchQuery.trim()) {
-        const res = await axios.get('/api/volunteers', {
-          params: { role: 'Volunteer', search: searchQuery.trim() },
-        })
-        setSearchResults(res.data)
-      }
-    } catch (error) {
-      console.error('Error deleting volunteer:', error)
-      setNotification('Failed to delete volunteer.')
     }
   }
 
-  //------------------------------------------------------------
-  // Clear notifications automatically
   useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => setNotification(null), 4000)
@@ -139,8 +163,6 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
     }
   }, [notification])
 
-  //------------------------------------------------------------
-  // Utility table renderer
   const renderTable = (list: User[]) => (
     <table className="table table-bordered table-striped align-middle text-center">
       <thead className="text-center">
@@ -155,11 +177,8 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         </tr>
       </thead>
       <tbody>
-{list.map((u) => {
-            const isUnsynced = u.id === 0 // heuristic for unsynced items
-  return (
-    <tr key={u.email} className={isUnsynced ? 'table-warning' : ''}>
-
+        {list.map((u) => (
+          <tr key={u.id}>
             <td>
               {u.firstname} {u.lastname}
             </td>
@@ -191,14 +210,11 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
               </button>
             </td>
           </tr>
-        )
-})}
+        ))}
       </tbody>
     </table>
   )
 
-  //------------------------------------------------------------
-  // Render
   return (
     <div
       className="container-fluid"
@@ -213,12 +229,10 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         *Instant Search* - type something in the box below
       </p>
 
-      {/* Notification */}
       {notification && (
         <div className="alert alert-info text-center">{notification}</div>
       )}
 
-      {/* Search input (auto-search on typing) */}
       <div className="mb-4 d-flex justify-content-center">
         <input
           className="form-control w-50 me-2 fs-6"
@@ -228,7 +242,6 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         />
       </div>
 
-      {/* Search Results (if user typed something) */}
       {searchQuery.trim() && (
         <>
           <h3 className="text-center p-3">Search Results</h3>
@@ -243,12 +256,11 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         </>
       )}
 
-      {/* Always show all volunteers below */}
       <h3 className="text-center p-3 ">All Volunteers</h3>
       {allLeads.length > 0 ? (
         renderTable(allLeads)
       ) : (
-        <p className="text-center text-muted">No Voluntees found.</p>
+        <p className="text-center text-muted">No Volunteers found.</p>
       )}
     </div>
   )

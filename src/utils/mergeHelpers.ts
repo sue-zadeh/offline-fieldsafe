@@ -1,39 +1,21 @@
-// src/utils/mergeHelpers.ts
+import type { User } from '../types/user'
 
-// import { OfflineItem } from './localDB'
+export function mergeByEmail(online: User[], offline: User[]): User[] {
+  const emailMap = new Map<string, User>()
 
-export interface MergeUser {
-  email: string
-  [key: string]: any
-}
-
-/**
- * Merges online + offline users by email.
- * Keeps all online users and also includes unsynced offline entries (even if email matches).
- */
-export function mergeByEmail<T extends MergeUser>(
-  online: T[],
-  offline: T[]
-): T[] {
-  const onlineMap = new Map<string, T>()
-  const result: T[] = []
-
-  // Add online users to the map
+  // Prioritize online data (assuming it's most updated)
   for (const user of online) {
-    if (user.email) {
-      onlineMap.set(user.email, user)
+    const key = user.email.trim().toLowerCase()
+    emailMap.set(key, user)
+  }
+
+  for (const user of offline) {
+    const key = user.email.trim().toLowerCase()
+    // Only add offline user if not already present
+    if (!emailMap.has(key)) {
+      emailMap.set(key, user)
     }
   }
 
-  // Add offline users that are unsynced or not present online
-  for (const offUser of offline) {
-    const existsOnline = onlineMap.has(offUser.email)
-    const isUnsynced = !(offUser as any).synced
-
-    if (!existsOnline || isUnsynced) {
-      result.push(offUser)
-    }
-  }
-
-  return [...online, ...result]
+  return Array.from(emailMap.values())
 }
