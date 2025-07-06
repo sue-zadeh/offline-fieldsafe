@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto', // ✅ THIS IS IMPORTANT
       includeAssets: ['favicon.svg', 'robots.txt', 'logo0.png'],
       manifest: {
         name: 'FieldSafe',
@@ -33,7 +34,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,ico}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/(fonts\.googleapis|gstatic)\.com\//,
+            urlPattern: /https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
             options: { cacheName: 'google-fonts' },
           },
@@ -43,39 +44,52 @@ export default defineConfig({
             options: { cacheName: 'app-icons' },
           },
           {
-            urlPattern: /\/api\/v.*$/i,
+            urlPattern: /\/api\/.*$/i,
             handler: 'NetworkFirst',
             options: { cacheName: 'api-cache' },
           },
         ],
-        additionalManifestEntries: [
-          { url: '/volunteer', revision: null },
-          { url: '/registervolunteer', revision: null },
-          { url: '/activity-notes', revision: null },
-          { url: '/addactivity', revision: null },
-          { url: '/searchactivity', revision: null },
-          { url: '/projects', revision: null },
-          { url: '/addproject', revision: null },
-          { url: '/searchproject', revision: null },
-          { url: '/report', revision: null },
-          { url: '/addrisk', revision: null },
-          { url: '/addhazard', revision: null },
-          { url: '/groupadmin', revision: null },
-          { url: '/fieldstaff', revision: null },
-          { url: '/teamlead', revision: null },
-          { url: '/registerroles', revision: null },
-          { url: '/home', revision: null },
-          { url: '/login', revision: null },
-          { url: '/activitychecklist', revision: null },
-          { url: '/activitytabs', revision: null },
-          { url: '/activityvolunteers', revision: null },
-          { url: '/activityoutcome', revision: null },
-          { url: '/activityrisk', revision: null },
-          { url: '/activityhazard', revision: null },
-          { url: '/activitycomplete', revision: null },
-          { url: '/navbar', revision: null },
-        ],
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5000',
+    },
+  },
 })
+
+// additionalManifestEntries is used to pre-cache actual files — like /about.html, not virtual React routes (/volunteer, /login).
+// Since you're using navigateFallback: '/index.html', React Router will take care of routing on offline navigation.
+
+//         additionalManifestEntries: [
+//           { url: '/volunteer', revision: null },
+//           { url: '/registervolunteer', revision: null },
+//           { url: '/activity-notes', revision: null },
+//           { url: '/addactivity', revision: null },
+//           { url: '/searchactivity', revision: null },
+//           { url: '/projects', revision: null },
+//           { url: '/addproject', revision: null },
+//           { url: '/searchproject', revision: null },
+//           { url: '/report', revision: null },
+//           { url: '/addrisk', revision: null },
+//           { url: '/addhazard', revision: null },
+//           { url: '/groupadmin', revision: null },
+//           { url: '/fieldstaff', revision: null },
+//           { url: '/teamlead', revision: null },
+//           { url: '/registerroles', revision: null },
+//           { url: '/home', revision: null },
+//           { url: '/login', revision: null },
+//           { url: '/activitychecklist', revision: null },
+//           { url: '/activitytabs', revision: null },
+//           { url: '/activityvolunteers', revision: null },
+//           { url: '/activityoutcome', revision: null },
+//           { url: '/activityrisk', revision: null },
+//           { url: '/activityhazard', revision: null },
+//           { url: '/activitycomplete', revision: null },
+//           { url: '/navbar', revision: null },
+//         ],
+//       },
+//     }),
+//   ],
+// })

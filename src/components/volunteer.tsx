@@ -17,31 +17,38 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
   const navigate = useNavigate()
 
   const fetchAllLeads = async () => {
-    const synced = await getSyncedItems()
-    const unsynced = await getUnsyncedItems()
+    try {
+      let onlineVolunteers: AppUser[] = []
+      let offlineVolunteers: AppUser[] = []
 
-    const offlineVolunteers = [...synced, ...unsynced]
-      .filter((item) => item.type === 'volunteer')
-      .map((item) => ({ ...item.data, id: 0 }))
+      const synced = await getSyncedItems()
+      const unsynced = await getUnsyncedItems()
 
-    let merged: AppUser[] = []
+      offlineVolunteers = [...synced, ...unsynced]
+        .filter((item) => item.type === 'volunteer')
+        .map((item) => ({ ...item.data, id: 0 }))
 
-    if (navigator.onLine) {
-      try {
+      if (navigator.onLine) {
         const res = await axios.get('/api/volunteers', {
           params: { role: 'Volunteer' },
         })
-        merged = mergeByEmail(res.data, offlineVolunteers)
-      } catch (err) {
-        console.warn('🌐 Online fetch failed. Using offline only.')
-        merged = offlineVolunteers
+        onlineVolunteers = res.data
       }
-    } else {
-      merged = offlineVolunteers
-    }
 
-    const sorted = merged.sort((a, b) => a.firstname.localeCompare(b.firstname))
-    setAllLeads(sorted)
+      const merged = mergeByEmail(onlineVolunteers, offlineVolunteers)
+      const sorted = merged.sort((a, b) =>
+        a.firstname.localeCompare(b.firstname)
+      )
+      setAllLeads(sorted)
+    } catch (err) {
+      console.warn('❌ Offline fallback used:', err)
+      const synced = await getSyncedItems()
+      const unsynced = await getUnsyncedItems()
+      const fallback = [...synced, ...unsynced]
+        .filter((item) => item.type === 'volunteer')
+        .map((item) => ({ ...item.data, id: 0 }))
+      setAllLeads(fallback)
+    }
   }
 
   useEffect(() => {
@@ -60,20 +67,17 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         })
         setSearchResults(res.data)
       } catch (error) {
-        console.error('Error searching Volunteers:', error)
-        setNotification('Failed to load data.')
-        if (!navigator.onLine) {
-          const allItems: OfflineItem[] = await getSyncedItems()
-          const offlineVolunteers = allItems
-            .filter((item) => item.type === 'volunteer')
-            .map((item) => item.data as AppUser)
-          const filtered = offlineVolunteers.filter((user) =>
-            `${user.firstname} ${user.lastname} ${user.email}`
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase())
-          )
-          setSearchResults(filtered)
-        }
+        setNotification('Search failed. Using offline data.')
+        const allItems: OfflineItem[] = await getSyncedItems()
+        const offlineVolunteers = allItems
+          .filter((item) => item.type === 'volunteer')
+          .map((item) => item.data as AppUser)
+        const filtered = offlineVolunteers.filter((user) =>
+          `${user.firstname} ${user.lastname} ${user.email}`
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase())
+        )
+        setSearchResults(filtered)
       }
     }
     doSearch()
@@ -103,7 +107,6 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         setNotification('Delete action queued for online sync.')
       }
       fetchAllLeads()
-
       if (searchQuery.trim()) {
         const res = await axios.get('/api/volunteers', {
           params: { role: 'Volunteer', search: searchQuery.trim() },

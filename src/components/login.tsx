@@ -48,14 +48,13 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           if (rememberMe) localStorage.setItem('email', email)
           else localStorage.removeItem('email')
 
-          await saveOfflineCredentials(email.trim().toLowerCase(), password)
-          console.log('✅ Saved credentials offline:', email)
           try {
-            // await saveOfflineCredentials(email.trim().toLowerCase(), password)
-            console.log('✅ Credentials saved offline')
+            await saveOfflineCredentials(email.trim().toLowerCase(), password)
+            console.log('✅ Credentials saved offline:', email)
           } catch (err) {
             console.error('❌ Failed to save credentials offline:', err)
           }
+
           onLoginSuccess()
           navigate('/home')
         } else {

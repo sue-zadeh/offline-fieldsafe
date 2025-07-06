@@ -33,9 +33,9 @@ app.use(express.json())
 // For find __dirname in ES Modules---------------
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+//------------------------------
 // Serve the dist folder
 app.use(express.static(path.join(__dirname, '..', 'dist')))
-//------------------------------
 // logging with Winston
 app.get('/', (req, res) => {
   logger.info('GET request received at /')
@@ -66,10 +66,19 @@ app.use('/api/report', reportRouter)
 //   next()
 // })
 //=================================
-// For a Single-Page App: fallback any other route to index.html
+// Serve service worker file FIRST
+app.use('/sw.js', express.static(path.join(__dirname, '..', 'dist', 'sw.js')))
+
+// Serve static
+app.use(express.static(path.join(__dirname, '..', 'dist')))
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+
+
+// 👇 LAST: fallback for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'))
 })
+
 //========================================
 
 // test route
