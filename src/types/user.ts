@@ -1,4 +1,5 @@
-export interface User {
+export type Role = 'Volunteer'
+export type User = {
   id: number
   firstname: string
   lastname: string
@@ -6,6 +7,5 @@ export interface User {
   phone: string
   emergencyContact: string
   emergencyContactNumber: string
-  role: string //'Volunteer' | 'Admin' | 'Staff' | 'TeamLead' 
-  synced?: boolean
+  role: Role
 }

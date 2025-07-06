@@ -104,37 +104,24 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
 
     try {
       if (navigator.onLine) {
-        try {
-          if (formData.id) {
-            await axios.put(`/api/volunteers/${formData.id}`, formData)
-            setNotification(`Editing ${formData.firstname} was successful!`)
-          } else {
-            await axios.post('/api/volunteers', formData)
-            setNotification(
-              `${formData.firstname} ${formData.lastname} added successfully!`
-            )
-          }
-        } catch (err) {
-          console.warn('⚠️ Network error, saving offline')
-          await saveOfflineItem({
-            type: 'volunteer',
-            data: formData,
-            synced: false,
-            timestamp: Date.now(),
-          })
-          setNotification('⚠️ Network error. Data saved locally and will sync.')
+        if (formData.id) {
+          await axios.put(`/api/volunteers/${formData.id}`, formData)
+          setNotification(`Editing ${formData.firstname} was successful!`)
+        } else {
+          await axios.post('/api/volunteers', formData)
+          setNotification(
+            `${formData.firstname} ${formData.lastname} added successfully!`
+          )
         }
       } else {
-        console.log('💾 Saving offline to IndexedDB')
         await saveOfflineItem({
           type: 'volunteer',
-          data: formData,
+          data: { ...formData, id: 0 }, // enforce new offline entry
           synced: false,
           timestamp: Date.now(),
         })
         setNotification('🕸️ You are offline. Data saved locally for sync.')
       }
-
       setTimeout(() => navigate('/volunteer'), 1000)
     } catch (error) {
       console.error('❌ Unexpected error saving user:', error)
