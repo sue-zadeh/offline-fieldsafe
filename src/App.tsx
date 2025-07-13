@@ -62,12 +62,11 @@ const App: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    const maybeUserName = localStorage.getItem('firstname')
-    if (maybeUserName) {
-      setIsLoggedIn(true)
-    }
-    setIsLoading(false)
-  }, [])
+  const isLogged = localStorage.getItem('loggedIn') === 'true'
+  setIsLoggedIn(isLogged)
+  setIsLoading(false)
+}, [])
+
 
   useEffect(() => {
     const startTimers = () => {
@@ -119,6 +118,7 @@ const App: React.FC = () => {
     localStorage.removeItem('firstname')
     localStorage.removeItem('lastname')
     localStorage.removeItem('role')
+    localStorage.removeItem('loggedIn') // Important for offline auth
     setIsLoggedIn(false)
     setLogoutMessage('You have successfully logged out.')
     setTimeout(() => {

@@ -1,7 +1,9 @@
+// Path: src/pages/Volunteer.tsx
+
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { getSyncedItems, OfflineItem, getUnsyncedItems } from '../utils/localDB'
+import { getSyncedItems, getUnsyncedItems, saveOfflineItem, cacheVolunteers, getCachedVolunteers } from '../utils/localDB'
 import { mergeByEmail } from '../utils/mergeHelpers'
 import type { User as AppUser } from '../types/user'
 
@@ -33,12 +35,20 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
           params: { role: 'Volunteer' },
         })
         onlineVolunteers = res.data
+
+        localStorage.setItem('volunteers', JSON.stringify(onlineVolunteers))
+        await cacheVolunteers(onlineVolunteers)
+      } else {
+        const cached = localStorage.getItem('volunteers')
+        if (cached) {
+          onlineVolunteers = JSON.parse(cached)
+        } else {
+          onlineVolunteers = await getCachedVolunteers()
+        }
       }
 
       const merged = mergeByEmail(onlineVolunteers, offlineVolunteers)
-      const sorted = merged.sort((a, b) =>
-        a.firstname.localeCompare(b.firstname)
-      )
+      const sorted = merged.sort((a, b) => a.firstname.localeCompare(b.firstname))
       setAllLeads(sorted)
     } catch (err) {
       console.warn('❌ Offline fallback used:', err)
@@ -68,10 +78,13 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         setSearchResults(res.data)
       } catch (error) {
         setNotification('Search failed. Using offline data.')
-        const allItems: OfflineItem[] = await getSyncedItems()
-        const offlineVolunteers = allItems
-          .filter((item) => item.type === 'volunteer')
-          .map((item) => item.data as AppUser)
+        const cached = localStorage.getItem('volunteers')
+        let offlineVolunteers: AppUser[] = []
+        if (cached) {
+          offlineVolunteers = JSON.parse(cached)
+        } else {
+          offlineVolunteers = await getCachedVolunteers()
+        }
         const filtered = offlineVolunteers.filter((user) =>
           `${user.firstname} ${user.lastname} ${user.email}`
             .toLowerCase()
@@ -90,29 +103,22 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       return
     }
 
-    if (
-      !window.confirm(
-        `Are you sure you want to delete ${userToDelete.firstname} ${userToDelete.lastname}?`
-      )
-    )
-      return
+    if (!window.confirm(`Are you sure you want to delete ${userToDelete.firstname} ${userToDelete.lastname}?`)) return
 
     try {
       if (navigator.onLine) {
         await axios.delete(`/api/volunteers/${userId}`)
-        setNotification(
-          `${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`
-        )
+        setNotification(`${userToDelete.firstname} ${userToDelete.lastname} deleted successfully!`)
       } else {
+        await saveOfflineItem({
+          type: 'volunteer_delete',
+          data: { id: userId },
+          synced: false,
+          timestamp: Date.now(),
+        })
         setNotification('Delete action queued for online sync.')
       }
       fetchAllLeads()
-      if (searchQuery.trim()) {
-        const res = await axios.get('/api/volunteers', {
-          params: { role: 'Volunteer', search: searchQuery.trim() },
-        })
-        setSearchResults(res.data)
-      }
     } catch (error) {
       console.error('Error deleting volunteer:', error)
       setNotification('Failed to delete volunteer.')

@@ -3,6 +3,7 @@ import logger from './logger.js'
 
 import path from 'path'
 import { fileURLToPath } from 'url'
+import apiRoutes from './routes/api.js' // backend routes
 import mysql from 'mysql2/promise'
 import bcrypt from 'bcrypt'
 import dotenv from 'dotenv'
@@ -29,6 +30,7 @@ dotenv.config()
 
 const app = express()
 app.use(express.json())
+app.use('/api', apiRoutes) // our API
 
 // For find __dirname in ES Modules---------------
 const __filename = fileURLToPath(import.meta.url)
@@ -36,6 +38,12 @@ const __dirname = path.dirname(__filename)
 //------------------------------
 // Serve the dist folder
 app.use(express.static(path.join(__dirname, '..', 'dist')))
+// Serve the service worker file
+app.use(
+  '/service-worker.js',
+  express.static(path.join(__dirname, '..', 'dist', 'service-worker.js'))
+)
+
 // logging with Winston
 app.get('/', (req, res) => {
   logger.info('GET request received at /')
@@ -73,11 +81,18 @@ app.use('/sw.js', express.static(path.join(__dirname, '..', 'dist', 'sw.js')))
 app.use(express.static(path.join(__dirname, '..', 'dist')))
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
-
 // 👇 LAST: fallback for SPA routing
+// === Serve frontend build ===
+const distPath = path.join(__dirname, '../dist')
+app.use(express.static(distPath))
+
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  res.sendFile(path.join(distPath, 'index.html'))
 })
+
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'))
+// })
 
 //========================================
 

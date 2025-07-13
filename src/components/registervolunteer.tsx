@@ -1,6 +1,8 @@
+// Path: src/pages/registervolunteer.tsx
+
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { saveOfflineItem } from '../utils/localDB'
+import { saveOfflineItem, OfflineItem } from '../utils/localDB'
 import axios from 'axios'
 
 interface AddvolunteerProps {
@@ -77,9 +79,7 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
-  // =====================================
-  // handleSubmit
-  // =====================================
+
   const handleSubmit = async () => {
     const validationError = validateForm()
     if (validationError) {
@@ -114,12 +114,13 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
           )
         }
       } else {
-        await saveOfflineItem({
-          type: 'volunteer',
-          data: { ...formData, id: 0 }, // enforce new offline entry
-          synced: false,
-          timestamp: Date.now(),
-        })
+        const item: Omit<OfflineItem, 'id'> = {
+        type: 'volunteer',
+        data: { ...formData, id: 0 },
+        synced: false,
+        timestamp: Date.now(),
+      }
+        await saveOfflineItem(item)
         setNotification('🕸️ You are offline. Data saved locally for sync.')
       }
       setTimeout(() => navigate('/volunteer'), 1000)
@@ -128,9 +129,6 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
       setNotification('Failed to save user.')
     }
   }
-
-  //======================================
-  // frontend
 
   return (
     <div
