@@ -3,7 +3,7 @@ import { openDB } from 'idb'
 const DB_NAME = 'AuthDB'
 const STORE_NAME = 'credentials'
 
-export const getAuthDB = async () => {
+const getAuthDB = async () => {
   return openDB(DB_NAME, 1, {
     upgrade(db) {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -13,13 +13,17 @@ export const getAuthDB = async () => {
   })
 }
 
-
-export const saveOfflineCredentials = async (
-  email: string,
+interface OfflineCredential {
+  email: string
   password: string
-) => {
+  firstname: string
+  lastname: string
+  role: string
+}
+
+export const saveOfflineCredentials = async (data: OfflineCredential) => {
   const db = await getAuthDB()
-  await db.put(STORE_NAME, { email, password })
+  await db.put(STORE_NAME, data)
 }
 
 export const getOfflineCredential = async (email: string) => {

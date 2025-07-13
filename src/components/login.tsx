@@ -72,7 +72,13 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         else localStorage.removeItem('email')
 
         try {
-          await saveOfflineCredentials(email.trim().toLowerCase(), password)
+await saveOfflineCredentials({
+  email: email.trim().toLowerCase(),
+  password,
+  firstname: response.data.firstname,
+  lastname: response.data.lastname,
+  role: response.data.role,
+})
           console.log('✅ Credentials saved offline:', email)
         } catch (err) {
           console.error(' Failed to save credentials offline:', err)

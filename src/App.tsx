@@ -36,6 +36,8 @@ const App: React.FC = () => {
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [, setCountdown] = useState(120)
   const [showSessionExpiredAlert] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [isAppInstalled, setIsAppInstalled] = useState(false)
 
   const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -43,8 +45,7 @@ const App: React.FC = () => {
   const INACTIVITY_LIMIT = 1000 * 60_000
   const isOnline = useNetworkStatus()
   const location = useLocation()
-  const isLoginPage =
-    location.pathname === '/' || location.pathname === '/login'
+  const isLoginPage = location.pathname === '/' || location.pathname === '/login'
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -62,11 +63,10 @@ const App: React.FC = () => {
   }, [])
 
   useEffect(() => {
-  const isLogged = localStorage.getItem('loggedIn') === 'true'
-  setIsLoggedIn(isLogged)
-  setIsLoading(false)
-}, [])
-
+    const isLogged = localStorage.getItem('loggedIn') === 'true'
+    setIsLoggedIn(isLogged)
+    setIsLoading(false)
+  }, [])
 
   useEffect(() => {
     const startTimers = () => {
@@ -99,6 +99,36 @@ const App: React.FC = () => {
   }, [showSessionModal])
 
   useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+    const handleAppInstalled = () => setIsAppInstalled(true)
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  const handleInstallClick = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      deferredPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt')
+        } else {
+          console.log('User dismissed the install prompt')
+        }
+        setDeferredPrompt(null)
+      })
+    }
+  }
+
+  useEffect(() => {
     if (showSessionModal) {
       setCountdown(120)
       const intervalId = setInterval(() => {
@@ -118,7 +148,7 @@ const App: React.FC = () => {
     localStorage.removeItem('firstname')
     localStorage.removeItem('lastname')
     localStorage.removeItem('role')
-    localStorage.removeItem('loggedIn') // Important for offline auth
+    localStorage.removeItem('loggedIn')
     setIsLoggedIn(false)
     setLogoutMessage('You have successfully logged out.')
     setTimeout(() => {
@@ -144,8 +174,18 @@ const App: React.FC = () => {
     return <div>Loading...</div>
   }
 
+  const isOfflineLoggedIn = localStorage.getItem('loggedIn') === 'true'
+  const isAllowed = isLoggedIn || (!navigator.onLine && isOfflineLoggedIn)
+
+//======= Install App Button =========
   return (
     <div>
+      {!isAppInstalled && isLoginPage && deferredPrompt && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
+          <button class="btn btn-outline-info " onClick={handleInstallClick} style={{ fontSize: '1.5rem', padding: '10px 20px'}}>Install App</button>
+        </div>
+      )}
+
       {showSessionExpiredAlert && (
         <div className="alert alert-warning text-center">
           Your session has expired due to inactivity. Please log in again.
@@ -174,66 +214,21 @@ const App: React.FC = () => {
             <div style={mainContentStyle}>
               <Routes>
                 <Route path="/" element={<Navigate to="/home" replace />} />
-                <Route
-                  path="/home"
-                  element={<Home isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/registerroles"
-                  element={<Registerroles isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/groupadmin"
-                  element={<Groupadmin isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/fieldstaff"
-                  element={<Fieldstaff isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/teamlead"
-                  element={<Teamlead isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/registervolunteer"
-                  element={<Registervolunteer isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/volunteer"
-                  element={<Volunteer isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/AddProject"
-                  element={<AddProject isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/Addobjective"
-                  element={<AddObjective isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/SearchProject"
-                  element={<SearchProject isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/addrisk"
-                  element={<AddRisk isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/addhazard"
-                  element={<AddHazard isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/activity-notes"
-                  element={<ActivityTabs isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/searchactivity"
-                  element={<SearchActivity isSidebarOpen={isSidebarOpen} />}
-                />
-                <Route
-                  path="/report"
-                  element={<Report isSidebarOpen={isSidebarOpen} />}
-                />
+                <Route path="/home" element={isAllowed ? <Home isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/registerroles" element={isAllowed ? <Registerroles isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/groupadmin" element={isAllowed ? <Groupadmin isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/fieldstaff" element={isAllowed ? <Fieldstaff isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/teamlead" element={isAllowed ? <Teamlead isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/registervolunteer" element={isAllowed ? <Registervolunteer isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/volunteer" element={isAllowed ? <Volunteer isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/AddProject" element={isAllowed ? <AddProject isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/Addobjective" element={isAllowed ? <AddObjective isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/SearchProject" element={isAllowed ? <SearchProject isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/addrisk" element={isAllowed ? <AddRisk isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/addhazard" element={isAllowed ? <AddHazard isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/activity-notes" element={isAllowed ? <ActivityTabs isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/searchactivity" element={isAllowed ? <SearchActivity isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route path="/report" element={isAllowed ? <Report isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
                 <Route path="*" element={<div>404 Not Found</div>} />
               </Routes>
             </div>

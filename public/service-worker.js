@@ -12,6 +12,7 @@ import {
 } from 'workbox-strategies'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
+import { warmStrategyCache } from 'workbox-recipes';
 
 const bgSyncPlugin = new BackgroundSyncPlugin('api-queue', {
   maxRetentionTime: 24 * 60,
@@ -22,6 +23,7 @@ const offlineFallbackPage = '/offline.html'
 precacheAndRoute(self.__WB_MANIFEST || [])
 
 self.addEventListener('install', (event) => {
+  clients.claim();
   event.waitUntil(
     caches.open('offline-fallbacks').then((cache) =>
       cache.addAll([

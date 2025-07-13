@@ -120,6 +120,12 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       }
       fetchAllLeads()
     } catch (error) {
+       if (!navigator.onLine) {
+    console.warn('Offline: queuing delete task instead of remote call.')
+    // Store it in IndexedDB/local queue for retry
+  } else {
+      throw new Error('Unexpected error') 
+  }
       console.error('Error deleting volunteer:', error)
       setNotification('Failed to delete volunteer.')
     }
