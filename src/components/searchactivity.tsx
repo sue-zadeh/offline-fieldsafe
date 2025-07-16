@@ -43,21 +43,58 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
   // Search term
   const [searchTerm, setSearchTerm] = useState('')
 
-  // fetch all activities
-  useEffect(() => {
-    ;(async () => {
-      try {
-        setLoading(true)
+  // ======= fetch all activities =========
+   useEffect(() => {
+  ;(async () => {
+    try {
+      setLoading(true)
+      let activities: ActivityRow[] = []
+
+      if (navigator.onLine) {
         const res = await axios.get<ActivityRow[]>('/api/activities')
-        setAllActivities(res.data)
-      } catch (err) {
-        console.error('Error fetching activities:', err)
-        setError('Failed to load activity notes.')
-      } finally {
-        setLoading(false)
+        activities = res.data
+
+        const { cacheActivities } = await import('../utils/localDB')
+        await cacheActivities(activities)
+      } else {
+        const { getCachedActivities } = await import('../utils/localDB')
+        activities = await getCachedActivities()
       }
-    })()
-  }, [])
+
+      const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+      const synced = await getSyncedItems()
+      const unsynced = await getUnsyncedItems()
+      const offline = [...synced, ...unsynced]
+        .filter((i) => i.type === 'activity')
+        .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
+
+      activities = [...activities, ...offline]
+
+      setAllActivities(activities)
+    } catch (err) {
+      console.error('Error fetching activities:', err)
+      setError('Failed to load activity notes.')
+
+      try {
+        const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+        const cached = await getCachedActivities()
+        const synced = await getSyncedItems()
+        const unsynced = await getUnsyncedItems()
+        const offline = [...synced, ...unsynced]
+          .filter((i) => i.type === 'activity')
+          .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
+
+        const merged = [...cached, ...offline]
+        setAllActivities(merged)
+      } catch (cacheErr) {
+        console.error('Error loading cached activities:', cacheErr)
+      }
+    } finally {
+      setLoading(false)
+    }
+  })()
+}, [])
+
 
   useEffect(() => {
     const st = location.state as { redirectTo?: string }

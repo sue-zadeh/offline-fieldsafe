@@ -7,9 +7,18 @@ import { saveOfflineCredentials, getOfflineCredential } from '../utils/authDB'
 
 interface LoginProps {
   onLoginSuccess: () => void
+   deferredPrompt?: any
+  isAppInstalled?: boolean
+  handleInstallClick?: () => void
+
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+const Login: React.FC<LoginProps> = ({
+   onLoginSuccess,
+   deferredPrompt,
+   isAppInstalled,
+   handleInstallClick
+   }) => {
   const [email, setEmail] = useState<string>('')
   const [password, setPassword] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -129,8 +138,22 @@ await saveOfflineCredentials({
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
   }
+  
 
   return (
+    <>
+    {!isAppInstalled && deferredPrompt && (
+  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded">
+    <button
+      type="button"
+      className="btn btn-info fw-bold"
+      onClick={handleInstallClick}
+    >
+      Install App
+    </button>
+  </div>
+)}
+
     <div
       className="login-container d-flex justify-content-center align-items-center vh-100"
       style={{ backgroundColor: '#F4F7F1' }}
@@ -218,6 +241,7 @@ await saveOfflineCredentials({
         </button>
       </div>
     </div>
+    </>
   )
 }
 

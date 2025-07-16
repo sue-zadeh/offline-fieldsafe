@@ -1,4 +1,3 @@
-// vite.config.ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -6,24 +5,20 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   plugins: [
     react(),
-    server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
-  },
-})
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       strategies: 'injectManifest',
       srcDir: 'public',
       filename: 'service-worker.js',
-      includeAssets: ['favicon.svg', 'robots.txt', 'logo0.png', 'logo-lil.png', 'welcompage2.jpg', 'offline.html'],
-      // manifest: false, //we already have public/manifest.json 
+      includeAssets: [
+        'favicon.svg',
+        'robots.txt',
+        'logo0.png',
+        'logo-lil.png',
+        'welcompage2.jpg',
+        'offline.html'
+      ],
       manifest: {
         name: 'FieldSafe',
         short_name: 'FieldSafe',
@@ -44,11 +39,15 @@ export default defineConfig({
           },
         ],
       },
-    }),
+    })
   ],
   server: {
     proxy: {
-      '/api': 'http://localhost:5000',
-    },
-  },
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 })

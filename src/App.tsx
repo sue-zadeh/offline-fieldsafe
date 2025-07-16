@@ -98,11 +98,13 @@ const App: React.FC = () => {
     }
   }, [showSessionModal])
 
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-    }
+ useEffect(() => {
+  const handleBeforeInstallPrompt = (e: any) => {
+    console.log("beforeinstallprompt triggered")
+    e.preventDefault()
+    setDeferredPrompt(e)
+  }
+
     const handleAppInstalled = () => setIsAppInstalled(true)
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -120,6 +122,7 @@ const App: React.FC = () => {
       deferredPrompt.userChoice.then((choiceResult: any) => {
         if (choiceResult.outcome === 'accepted') {
           console.log('User accepted the install prompt')
+          setIsAppInstalled(true)
         } else {
           console.log('User dismissed the install prompt')
         }
@@ -177,15 +180,17 @@ const App: React.FC = () => {
   const isOfflineLoggedIn = localStorage.getItem('loggedIn') === 'true'
   const isAllowed = isLoggedIn || (!navigator.onLine && isOfflineLoggedIn)
 
-//======= Install App Button =========
   return (
     <div>
       {!isAppInstalled && isLoginPage && deferredPrompt && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
-          <button class="btn btn-outline-info " onClick={handleInstallClick} style={{ fontSize: '1.5rem', padding: '10px 20px'}}>Install App</button>
-        </div>
-      )}
+  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded" style={{ backgroundColor: '#0094B6', color: 'white' }}>
+    <button type="button" className="btn btn-info btn-sm" onClick={handleInstallClick}>
+      Install App
+    </button>
+  </div>
+)}
 
+ 
       {showSessionExpiredAlert && (
         <div className="alert alert-warning text-center">
           Your session has expired due to inactivity. Please log in again.
@@ -201,7 +206,11 @@ const App: React.FC = () => {
         </div>
       )}
       {!isLoggedIn ? (
-        <Login onLoginSuccess={handleLoginSuccess} />
+        <Login
+         onLoginSuccess={handleLoginSuccess}
+         deferredPrompt={deferredPrompt}
+         isAppInstalled={isAppInstalled}
+         handleInstallClick={handleInstallClick}/>
       ) : (
         <div className="d-flex flex-column vh-100">
           <Navbar

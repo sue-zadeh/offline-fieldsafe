@@ -1,9 +1,10 @@
 export type Role = 'Volunteer'
-export type User = {
+
+export interface User {
   id: number
+  email: string
   firstname: string
   lastname: string
-  email: string
   phone: string
   emergencyContact: string
   emergencyContactNumber: string

@@ -1,9 +1,15 @@
-// Path: src/pages/Volunteer.tsx
+// src/pages/Volunteer.tsx
 
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { getSyncedItems, getUnsyncedItems, saveOfflineItem, cacheVolunteers, getCachedVolunteers } from '../utils/localDB'
+import {
+  getSyncedItems,
+  getUnsyncedItems,
+  saveOfflineItem,
+  cacheVolunteers,
+  getCachedVolunteers
+} from '../utils/localDB'
 import { mergeByEmail } from '../utils/mergeHelpers'
 import type { User as AppUser } from '../types/user'
 
@@ -28,14 +34,13 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
 
       offlineVolunteers = [...synced, ...unsynced]
         .filter((item) => item.type === 'volunteer')
-        .map((item) => ({ ...item.data, id: 0 }))
+        .map((item) => ({ ...item.data, id: item.data.id || item.timestamp }))
 
       if (navigator.onLine) {
         const res = await axios.get('/api/volunteers', {
-          params: { role: 'Volunteer' },
+          params: { role: 'Volunteer' }
         })
         onlineVolunteers = res.data
-
         localStorage.setItem('volunteers', JSON.stringify(onlineVolunteers))
         await cacheVolunteers(onlineVolunteers)
       } else {
@@ -73,7 +78,7 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       }
       try {
         const res = await axios.get('/api/volunteers', {
-          params: { role: 'Volunteer', search: searchQuery.trim() },
+          params: { role: 'Volunteer', search: searchQuery.trim() }
         })
         setSearchResults(res.data)
       } catch (error) {
@@ -114,18 +119,12 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
           type: 'volunteer_delete',
           data: { id: userId },
           synced: false,
-          timestamp: Date.now(),
+          timestamp: Date.now()
         })
         setNotification('Delete action queued for online sync.')
       }
       fetchAllLeads()
     } catch (error) {
-       if (!navigator.onLine) {
-    console.warn('Offline: queuing delete task instead of remote call.')
-    // Store it in IndexedDB/local queue for retry
-  } else {
-      throw new Error('Unexpected error') 
-  }
       console.error('Error deleting volunteer:', error)
       setNotification('Failed to delete volunteer.')
     }
@@ -154,9 +153,7 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       <tbody>
         {list.map((u) => (
           <tr key={u.email}>
-            <td>
-              {u.firstname} {u.lastname}
-            </td>
+            <td>{u.firstname} {u.lastname}</td>
             <td>{u.email}</td>
             <td>{u.phone}</td>
             <td>{u.emergencyContact}</td>
@@ -165,24 +162,33 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
               <option value="Volunteer">Volunteer</option>
             </td>
             <td className="text-center">
-              <button
-                className="btn btn-warning btn-sm me-2 text-light rounded"
-                style={{ backgroundColor: '#0094b6' }}
-                onClick={() =>
-                  navigate('/registervolunteer', {
-                    state: { user: u, isEdit: true },
-                  })
-                }
-              >
-                Edit
+              {navigator.onLine && (
+                <>
+                 <button
+                      className="btn btn-warning btn-sm me-2 text-light rounded"
+                      style={{ backgroundColor: '#0094b6' }}
+                      onClick={() =>
+                      navigate('/registervolunteer', {
+                      state: { user: u, isEdit: true }
+            })
+           }
+                disabled={!navigator.onLine}
+                title={!navigator.onLine ? 'Edit disabled offline' : ''}
+           >
+            Edit
               </button>
               <button
-                className="btn btn-danger btn-sm rounded"
-                style={{ backgroundColor: '#D37B40' }}
-                onClick={() => handleDelete(u.id)}
-              >
-                Delete
-              </button>
+        className="btn btn-danger btn-sm rounded"
+        style={{ backgroundColor: '#D37B40' }}
+        onClick={() => handleDelete(u.id)}
+        disabled={!navigator.onLine}
+        title={!navigator.onLine ? 'Delete disabled offline' : ''}
+       >
+        Delete
+       </button>
+      </>
+
+              )}
             </td>
           </tr>
         ))}
@@ -196,10 +202,10 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
       style={{
         marginLeft: isSidebarOpen ? '220px' : '20px',
         padding: '20px',
-        transition: 'all 0.3s ease',
+        transition: 'all 0.3s ease'
       }}
     >
-      <h2 className="text-center mb-2 ">Volunteer</h2>
+      <h2 className="text-center mb-2">Volunteer</h2>
       <p className="text-center text-muted fs-5">
         *Instant Search* - type something in the box below
       </p>
@@ -231,11 +237,11 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
         </>
       )}
 
-      <h3 className="text-center p-3 ">All Volunteers</h3>
+      <h3 className="text-center p-3">All Volunteers</h3>
       {allLeads.length > 0 ? (
         renderTable(allLeads)
       ) : (
-        <p className="text-center text-muted">No Voluntees found.</p>
+        <p className="text-center text-muted">No Volunteers found.</p>
       )}
     </div>
   )

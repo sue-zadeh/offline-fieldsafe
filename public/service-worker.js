@@ -1,29 +1,25 @@
 import { precacheAndRoute } from 'workbox-precaching'
 import {
   setCatchHandler,
-  setDefaultHandler,
   registerRoute,
 } from 'workbox-routing'
 import {
   CacheFirst,
-  NetworkOnly,
   NetworkFirst,
   StaleWhileRevalidate,
 } from 'workbox-strategies'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
-import { warmStrategyCache } from 'workbox-recipes';
+import { warmStrategyCache } from 'workbox-recipes'
 
-const bgSyncPlugin = new BackgroundSyncPlugin('api-queue', {
-  maxRetentionTime: 24 * 60,
-})
+// Precache all manifest assets
+precacheAndRoute(self.__WB_MANIFEST || [])
 
 const offlineFallbackPage = '/offline.html'
 
-precacheAndRoute(self.__WB_MANIFEST || [])
-
+// Cache important fallback assets during install
 self.addEventListener('install', (event) => {
-  clients.claim();
+  self.skipWaiting()
   event.waitUntil(
     caches.open('offline-fallbacks').then((cache) =>
       cache.addAll([
@@ -36,6 +32,11 @@ self.addEventListener('install', (event) => {
   )
 })
 
+self.addEventListener('activate', () => {
+  clients.claim()
+})
+
+// Offline HTML fallback for document navigations
 setCatchHandler(async ({ event }) => {
   const cache = await caches.open('offline-fallbacks')
   if (event.request.destination === 'document') {
@@ -44,7 +45,7 @@ setCatchHandler(async ({ event }) => {
   return Response.error()
 })
 
-//=== precache key pages
+// Pre-cache route pages for offline navigation
 const cacheFallbackStrategy = new CacheFirst()
 warmStrategyCache({
   urls: [
@@ -78,8 +79,7 @@ warmStrategyCache({
   strategy: cacheFallbackStrategy,
 })
 
-
-// === Offline SPA Routing ===
+// SPA routing
 registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
@@ -88,7 +88,7 @@ registerRoute(
   })
 )
 
-// === Static assets: CSS, JS, Workers
+// CSS/JS/Workers
 registerRoute(
   ({ request }) => ['style', 'script', 'worker'].includes(request.destination),
   new StaleWhileRevalidate({
@@ -97,7 +97,7 @@ registerRoute(
   })
 )
 
-// === Google Fonts
+// Google Fonts
 registerRoute(
   ({ url }) =>
     url.origin.includes('googleapis') || url.origin.includes('gstatic'),
@@ -107,18 +107,44 @@ registerRoute(
   })
 )
 
-// === API: Volunteers (sync offline later)
+// Block login while offline
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/login'),
+  async ({ event }) => {
+    if (!self.navigator.onLine) {
+      return new Response(
+        JSON.stringify({ error: 'Login requires internet connection' }),
+        {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    }
+    return fetch(event.request)
+  },
+  'GET'
+)
+
+// Volunteers API with background sync
+const bgSyncPlugin = new BackgroundSyncPlugin('api-queue', {
+  maxRetentionTime: 24 * 60,
+})
+
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/volunteers'),
   new NetworkFirst({
     cacheName: 'volunteers-api-cache',
-    plugins: [bgSyncPlugin, new CacheableResponsePlugin({ statuses: [0, 200] })],
+    plugins: [
+      bgSyncPlugin,
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
   })
 )
 
-// === API: Generic
+// Other API endpoints
 registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/'),
+  ({ url }) =>
+    url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/login'),
   new NetworkFirst({
     cacheName: 'api-cache',
     networkTimeoutSeconds: 5,
