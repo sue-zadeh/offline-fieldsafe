@@ -182,16 +182,8 @@ const App: React.FC = () => {
 
   return (
     <div>
-      {!isAppInstalled && isLoginPage && deferredPrompt && (
-  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded" style={{ backgroundColor: '#0094B6', color: 'white' }}>
-    <button type="button" className="btn btn-info btn-sm" onClick={handleInstallClick}>
-      Install App
-    </button>
-  </div>
-)}
 
- 
-      {showSessionExpiredAlert && (
+       {showSessionExpiredAlert && (
         <div className="alert alert-warning text-center">
           Your session has expired due to inactivity. Please log in again.
         </div>
@@ -205,6 +197,15 @@ const App: React.FC = () => {
           later.
         </div>
       )}
+      
+      {/* Install Button */}
+      {!isAppInstalled && isLoginPage && deferredPrompt && (
+  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded" style={{ backgroundColor: '#0094B6', color: 'white' }}>
+    <button type="button" className="btn btn-info btn-sm text-light w-50" onClick={handleInstallClick}>
+      Install App
+    </button>
+  </div>
+)}
       {!isLoggedIn ? (
         <Login
          onLoginSuccess={handleLoginSuccess}

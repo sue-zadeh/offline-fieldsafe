@@ -143,13 +143,15 @@ await saveOfflineCredentials({
   return (
     <>
     {!isAppInstalled && deferredPrompt && (
-  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded">
+  <div
+  //  className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded"
+   >
     <button
       type="button"
-      className="btn btn-info fw-bold"
+      // className="btn btn-info fw-bold"
       onClick={handleInstallClick}
     >
-      Install App
+      {/* Install App */}
     </button>
   </div>
 )}
