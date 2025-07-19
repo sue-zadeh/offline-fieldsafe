@@ -4,7 +4,11 @@ import axios from 'axios'
 import { Form, Button, Row, Col, Card, Modal } from 'react-bootstrap'
 import { GoogleMap, Marker } from '@react-google-maps/api'
 import MapLoader from './MapLoader'
-import { saveOfflineItem, getSyncedItems, getUnsyncedItems } from '../utils/localDB'
+import {
+  saveOfflineItem,
+  getSyncedItems,
+  getUnsyncedItems,
+} from '../utils/localDB'
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 
@@ -70,10 +74,14 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
   useEffect(() => {
     if (!fromSearch) {
       if (activityId) {
-        setModalText('You already have an Activity Note in progress. Would you like to start a new one?')
+        setModalText(
+          'You already have an Activity Note in progress. Would you like to start a new one?'
+        )
         setShowModal(true)
       } else {
-        setModalText('Would you like to choose an activity from the list? Or start a new one?')
+        setModalText(
+          'Would you like to choose an activity from the list? Or start a new one?'
+        )
         setShowModal(true)
       }
     }
@@ -119,7 +127,9 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
               .filter((i) => i.type === 'activity')
               .map((i) => i.data)
 
-            const local = all.find((a) => a.id === activityId || a.timestamp === activityId)
+            const local = all.find(
+              (a) => a.id === activityId || a.timestamp === activityId
+            )
             if (local) {
               setActivity(local)
               setReadOnly(true)
@@ -141,7 +151,9 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
 
   async function geocodeAddress(address: string) {
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+        address
+      )}&key=${GOOGLE_MAPS_API_KEY}`
       const resp = await fetch(url)
       const json = await resp.json()
       if (json.status === 'OK' && json.results[0]?.geometry?.location) {
@@ -174,7 +186,11 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
   }
 
   const handleSave = async () => {
-    if (!activity.activity_date || !activity.activity_name || !activity.project_id) {
+    if (
+      !activity.activity_date ||
+      !activity.activity_name ||
+      !activity.project_id
+    ) {
       alert('Please fill Activity Name, Project, and Activity Date.')
       return
     }
@@ -194,12 +210,18 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
           alert('Offline: Activity saved locally and will sync later.')
         }
 
-        const redirectTo = activity.status === 'archived' ? 'archivedactivities' : 'activeactivities'
+        const redirectTo =
+          activity.status === 'archived'
+            ? 'archivedactivities'
+            : 'activeactivities'
         navigate('/searchactivity', { state: { redirectTo } })
       } else if (!readOnly && navigator.onLine) {
         await axios.put(`/api/activities/${activityId}`, activity)
         alert('Activity updated successfully!')
-        const redirectTo = activity.status === 'archived' ? 'archivedactivities' : 'activeactivities'
+        const redirectTo =
+          activity.status === 'archived'
+            ? 'archivedactivities'
+            : 'activeactivities'
         navigate('/searchactivity', { state: { redirectTo } })
       }
     } catch (err: any) {
@@ -234,7 +256,10 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
         </Modal.Header>
         <Modal.Body>{modalText}</Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => navigate('/searchactivity')}>
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/searchactivity')}
+          >
             Go To List
           </Button>
           <Button variant="primary" onClick={handleModalNew}>
@@ -245,7 +270,9 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
 
       <Card>
         <Card.Header>
-          <h4 style={{ margin: 0 }}>{activityId ? 'Activity Detail' : 'Add Activity'}</h4>
+          <h4 style={{ margin: 0 }}>
+            {activityId ? 'Activity Detail' : 'Add Activity'}
+          </h4>
         </Card.Header>
         <Card.Body>
           <Form>
@@ -391,4 +418,4 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
   )
 }
 
-export default AddActivity;
+export default AddActivity

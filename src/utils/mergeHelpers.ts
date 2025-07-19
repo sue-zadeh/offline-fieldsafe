@@ -21,3 +21,22 @@ export function mergeByEmail(online: User[], offline: User[]): User[] {
 
   return Array.from(emailMap.values())
 }
+
+//==== activity pages
+export function mergeByKey(
+  online: any[],
+  offline: any[],
+  key: string = 'id'
+): any[] {
+  const mergedMap = new Map<string, any>()
+
+  for (const item of online) {
+    mergedMap.set(item[key], item)
+  }
+
+  for (const item of offline) {
+    mergedMap.set(item[key], item) // offline item replaces online if key matches
+  }
+
+  return Array.from(mergedMap.values())
+}

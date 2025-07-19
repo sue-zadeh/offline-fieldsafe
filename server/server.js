@@ -75,7 +75,10 @@ app.use('/api/report', reportRouter)
 // })
 //=================================
 // Serve service worker file FIRST
-app.use('/sw.js', express.static(path.join(__dirname, '..', 'dist', 'sw.js')))
+app.use(
+  '/service-worker.js',
+  express.static(path.join(__dirname, '..', 'dist', 'service-worker.js'))
+)
 
 // Serve static
 app.use(express.static(path.join(__dirname, '..', 'dist')))

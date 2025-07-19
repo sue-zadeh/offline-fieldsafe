@@ -13,6 +13,7 @@ import {
 import { mergeByEmail } from '../utils/mergeHelpers'
 import type { User as AppUser } from '../types/user'
 
+
 interface VolunteerProps {
   isSidebarOpen: boolean
 }

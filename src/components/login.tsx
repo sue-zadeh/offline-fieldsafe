@@ -7,18 +7,12 @@ import { saveOfflineCredentials, getOfflineCredential } from '../utils/authDB'
 
 interface LoginProps {
   onLoginSuccess: () => void
-   deferredPrompt?: any
-  isAppInstalled?: boolean
-  handleInstallClick?: () => void
-
+  //  deferredPrompt?: any
+  // isAppInstalled?: boolean
+  // handleInstallClick?: () => void
 }
 
-const Login: React.FC<LoginProps> = ({
-   onLoginSuccess,
-   deferredPrompt,
-   isAppInstalled,
-   handleInstallClick
-   }) => {
+const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState<string>('')
   const [password, setPassword] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -45,7 +39,7 @@ const Login: React.FC<LoginProps> = ({
 
     setIsLoading(true)
     setError('')
-// ================ OFFLINE login success block ===============
+    // ================ OFFLINE login success block ===============
 
     if (!navigator.onLine) {
       try {
@@ -71,23 +65,22 @@ const Login: React.FC<LoginProps> = ({
       const response = await axios.post('/api/login', { email, password })
       if (response.data.message === 'Login successful') {
         // ===== ONLINE login success block ======
-          localStorage.setItem('loggedIn', 'true') 
+        localStorage.setItem('loggedIn', 'true')
         localStorage.setItem('firstname', response.data.firstname)
         localStorage.setItem('lastname', response.data.lastname)
         localStorage.setItem('role', response.data.role)
-
 
         if (rememberMe) localStorage.setItem('email', email)
         else localStorage.removeItem('email')
 
         try {
-await saveOfflineCredentials({
-  email: email.trim().toLowerCase(),
-  password,
-  firstname: response.data.firstname,
-  lastname: response.data.lastname,
-  role: response.data.role,
-})
+          await saveOfflineCredentials({
+            email: email.trim().toLowerCase(),
+            password,
+            firstname: response.data.firstname,
+            lastname: response.data.lastname,
+            role: response.data.role,
+          })
           console.log('✅ Credentials saved offline:', email)
         } catch (err) {
           console.error(' Failed to save credentials offline:', err)
@@ -138,23 +131,22 @@ await saveOfflineCredentials({
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
   }
-  
 
   return (
-    <>
-    {!isAppInstalled && deferredPrompt && (
-  <div
-  //  className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded"
-   >
-    <button
-      type="button"
-      // className="btn btn-info fw-bold"
-      onClick={handleInstallClick}
-    >
-      {/* Install App */}
-    </button>
-  </div>
-)}
+    //   <>
+    //   {!isAppInstalled && deferredPrompt && (
+    // <div
+    //  className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded"
+    //  >
+    // <button
+    //   type="button"
+    // className="btn btn-info fw-bold"
+    //       onClick={handleInstallClick}
+    //     >
+    //       {/* Install App */}
+    //     </button>
+    //   </div>
+    // )}
 
     <div
       className="login-container d-flex justify-content-center align-items-center vh-100"
@@ -243,7 +235,7 @@ await saveOfflineCredentials({
         </button>
       </div>
     </div>
-    </>
+    // </>
   )
 }
 

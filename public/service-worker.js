@@ -1,8 +1,5 @@
 import { precacheAndRoute } from 'workbox-precaching'
-import {
-  setCatchHandler,
-  registerRoute,
-} from 'workbox-routing'
+import { setCatchHandler, registerRoute } from 'workbox-routing'
 import {
   CacheFirst,
   NetworkFirst,
@@ -13,7 +10,14 @@ import { BackgroundSyncPlugin } from 'workbox-background-sync'
 import { warmStrategyCache } from 'workbox-recipes'
 
 // Precache all manifest assets
-precacheAndRoute(self.__WB_MANIFEST || [])
+const seen = new Set()
+const cleaned = (self.__WB_MANIFEST || []).filter((entry) => {
+  const url = entry.url.split('?')[0]
+  if (seen.has(url)) return false
+  seen.add(url)
+  return true
+})
+precacheAndRoute(cleaned)
 
 const offlineFallbackPage = '/offline.html'
 

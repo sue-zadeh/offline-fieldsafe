@@ -11,6 +11,7 @@ import {
 } from 'react-bootstrap'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { FaSearch, FaArrowRight } from 'react-icons/fa' // <== removed FaTrashAlt
+import { getDB } from '../utils/localDB'
 
 interface ActivityRow {
   id: number
@@ -32,8 +33,8 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
 
   // The master list of all activities
   const [allActivities, setAllActivities] = useState<ActivityRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [, setLoading] = useState(true)
+  const [, setError] = useState<string | null>(null)
 
   // Current tab: "activeactivities" or "archivedactivities"
   const [activeTab, setActiveTab] = useState<
@@ -44,57 +45,59 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
   const [searchTerm, setSearchTerm] = useState('')
 
   // ======= fetch all activities =========
-   useEffect(() => {
-  ;(async () => {
-    try {
-      setLoading(true)
-      let activities: ActivityRow[] = []
-
-      if (navigator.onLine) {
-        const res = await axios.get<ActivityRow[]>('/api/activities')
-        activities = res.data
-
-        const { cacheActivities } = await import('../utils/localDB')
-        await cacheActivities(activities)
-      } else {
-        const { getCachedActivities } = await import('../utils/localDB')
-        activities = await getCachedActivities()
-      }
-
-      const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
-      const synced = await getSyncedItems()
-      const unsynced = await getUnsyncedItems()
-      const offline = [...synced, ...unsynced]
-        .filter((i) => i.type === 'activity')
-        .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
-
-      activities = [...activities, ...offline]
-
-      setAllActivities(activities)
-    } catch (err) {
-      console.error('Error fetching activities:', err)
-      setError('Failed to load activity notes.')
-
+  useEffect(() => {
+    ;(async () => {
       try {
-        const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
-        const cached = await getCachedActivities()
+        setLoading(true)
+        let activities: ActivityRow[] = []
+
+        if (navigator.onLine) {
+          const res = await axios.get<ActivityRow[]>('/api/activities')
+          activities = res.data
+
+          const { cacheActivities } = await import('../utils/localDB')
+          await cacheActivities(activities)
+        } else {
+          const { getCachedActivities } = await import('../utils/localDB')
+          activities = await getCachedActivities()
+        }
+
+        const { getSyncedItems, getUnsyncedItems } = await import(
+          '../utils/localDB'
+        )
         const synced = await getSyncedItems()
         const unsynced = await getUnsyncedItems()
         const offline = [...synced, ...unsynced]
           .filter((i) => i.type === 'activity')
           .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
 
-        const merged = [...cached, ...offline]
-        setAllActivities(merged)
-      } catch (cacheErr) {
-        console.error('Error loading cached activities:', cacheErr)
-      }
-    } finally {
-      setLoading(false)
-    }
-  })()
-}, [])
+        activities = [...activities, ...offline]
 
+        setAllActivities(activities)
+      } catch (err) {
+        console.error('Error fetching activities:', err)
+        setError('Failed to load activity notes.')
+
+        try {
+          const { getCachedActivities, getSyncedItems, getUnsyncedItems } =
+            await import('../utils/localDB')
+          const cached = await getCachedActivities()
+          const synced = await getSyncedItems()
+          const unsynced = await getUnsyncedItems()
+          const offline = [...synced, ...unsynced]
+            .filter((i) => i.type === 'activity')
+            .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
+
+          const merged = [...cached, ...offline]
+          setAllActivities(merged)
+        } catch (cacheErr) {
+          console.error('Error loading cached activities:', cacheErr)
+        }
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     const st = location.state as { redirectTo?: string }
@@ -142,15 +145,31 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
   }
 
   /** Arrow => go to AddActivity in read‐only mode */
-  const handleGoToDetail = (act: ActivityRow, e: React.MouseEvent) => {
+  const handleGoToDetail = async (act: ActivityRow, e: React.MouseEvent) => {
     e.stopPropagation()
+
+    if (!navigator.onLine) {
+      try {
+        const db = await getDB()
+        const tx = db.transaction('activities', 'readonly')
+        const store = tx.objectStore('activities')
+        const result = await store.get(act.id)
+
+        if (!result) {
+          alert('Offline: This activity is not available locally.')
+          return
+        }
+      } catch (err) {
+        console.error('Offline activity lookup failed', err)
+        alert('Offline: Failed to check local activity data.')
+        return
+      }
+    }
+
     navigate('/activity-notes', {
       state: { activityId: act.id, fromSearch: true },
     })
   }
-
-  if (loading) return <div>Loading activity notes...</div>
-  if (error) return <div className="alert alert-danger">{error}</div>
 
   return (
     <div

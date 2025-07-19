@@ -45,7 +45,8 @@ const App: React.FC = () => {
   const INACTIVITY_LIMIT = 1000 * 60_000
   const isOnline = useNetworkStatus()
   const location = useLocation()
-  const isLoginPage = location.pathname === '/' || location.pathname === '/login'
+  const isLoginPage =
+    location.pathname === '/' || location.pathname === '/login'
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -98,12 +99,12 @@ const App: React.FC = () => {
     }
   }, [showSessionModal])
 
- useEffect(() => {
-  const handleBeforeInstallPrompt = (e: any) => {
-    console.log("beforeinstallprompt triggered")
-    e.preventDefault()
-    setDeferredPrompt(e)
-  }
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      console.log('beforeinstallprompt triggered')
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
 
     const handleAppInstalled = () => setIsAppInstalled(true)
 
@@ -111,7 +112,10 @@ const App: React.FC = () => {
     window.addEventListener('appinstalled', handleAppInstalled)
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener(
+        'beforeinstallprompt',
+        handleBeforeInstallPrompt
+      )
       window.removeEventListener('appinstalled', handleAppInstalled)
     }
   }, [])
@@ -182,8 +186,7 @@ const App: React.FC = () => {
 
   return (
     <div>
-
-       {showSessionExpiredAlert && (
+      {showSessionExpiredAlert && (
         <div className="alert alert-warning text-center">
           Your session has expired due to inactivity. Please log in again.
         </div>
@@ -191,27 +194,31 @@ const App: React.FC = () => {
       {logoutMessage && (
         <div className="alert alert-success text-center">{logoutMessage}</div>
       )}
-      {!isLoginPage && !isOnline && (
-        <div className="alert alert-warning text-center">
-          🔸️ You are offline. Any new data will be stored locally and synced
-          later.
+      {isLoginPage && !isAppInstalled && deferredPrompt && (
+        <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 ">
+          <button
+            type="button"
+            style={{ backgroundColor: '#0094B6', color: 'white' }}
+            className="btn btn-info btn-sm text-light mt-5 p-4 w-100 fs-3 fw-bold shadow rounded"
+            onClick={handleInstallClick}
+          >
+            Install App
+          </button>
         </div>
       )}
-      
-      {/* Install Button */}
-      {!isAppInstalled && isLoginPage && deferredPrompt && (
-  <div className="d-flex justify-content-center align-items-center mt-5 p-4 w-100 fs-3 text-light fw-bold shadow rounded" style={{ backgroundColor: '#0094B6', color: 'white' }}>
-    <button type="button" className="btn btn-info btn-sm text-light w-50" onClick={handleInstallClick}>
-      Install App
-    </button>
-  </div>
-)}
+      {!isLoginPage && !isOnline && (
+        <div className="alert alert-warning text-center">
+          You are offline. Any new data will be stored locally and synced later.
+        </div>
+      )}
+
       {!isLoggedIn ? (
         <Login
-         onLoginSuccess={handleLoginSuccess}
-         deferredPrompt={deferredPrompt}
-         isAppInstalled={isAppInstalled}
-         handleInstallClick={handleInstallClick}/>
+          onLoginSuccess={handleLoginSuccess}
+          // deferredPrompt={deferredPrompt}
+          // isAppInstalled={isAppInstalled}
+          // handleInstallClick={handleInstallClick}
+        />
       ) : (
         <div className="d-flex flex-column vh-100">
           <Navbar
@@ -224,21 +231,156 @@ const App: React.FC = () => {
             <div style={mainContentStyle}>
               <Routes>
                 <Route path="/" element={<Navigate to="/home" replace />} />
-                <Route path="/home" element={isAllowed ? <Home isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/registerroles" element={isAllowed ? <Registerroles isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/groupadmin" element={isAllowed ? <Groupadmin isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/fieldstaff" element={isAllowed ? <Fieldstaff isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/teamlead" element={isAllowed ? <Teamlead isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/registervolunteer" element={isAllowed ? <Registervolunteer isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/volunteer" element={isAllowed ? <Volunteer isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/AddProject" element={isAllowed ? <AddProject isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/Addobjective" element={isAllowed ? <AddObjective isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/SearchProject" element={isAllowed ? <SearchProject isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/addrisk" element={isAllowed ? <AddRisk isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/addhazard" element={isAllowed ? <AddHazard isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/activity-notes" element={isAllowed ? <ActivityTabs isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/searchactivity" element={isAllowed ? <SearchActivity isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
-                <Route path="/report" element={isAllowed ? <Report isSidebarOpen={isSidebarOpen} /> : <Navigate to="/login" />} />
+                <Route
+                  path="/home"
+                  element={
+                    isAllowed ? (
+                      <Home isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/registerroles"
+                  element={
+                    isAllowed ? (
+                      <Registerroles isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/groupadmin"
+                  element={
+                    isAllowed ? (
+                      <Groupadmin isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/fieldstaff"
+                  element={
+                    isAllowed ? (
+                      <Fieldstaff isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/teamlead"
+                  element={
+                    isAllowed ? (
+                      <Teamlead isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/registervolunteer"
+                  element={
+                    isAllowed ? (
+                      <Registervolunteer isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/volunteer"
+                  element={
+                    isAllowed ? (
+                      <Volunteer isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/AddProject"
+                  element={
+                    isAllowed ? (
+                      <AddProject isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/Addobjective"
+                  element={
+                    isAllowed ? (
+                      <AddObjective isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/SearchProject"
+                  element={
+                    isAllowed ? (
+                      <SearchProject isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/addrisk"
+                  element={
+                    isAllowed ? (
+                      <AddRisk isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/addhazard"
+                  element={
+                    isAllowed ? (
+                      <AddHazard isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/activity-notes"
+                  element={
+                    isAllowed ? (
+                      <ActivityTabs isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/searchactivity"
+                  element={
+                    isAllowed ? (
+                      <SearchActivity isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
+                <Route
+                  path="/report"
+                  element={
+                    isAllowed ? (
+                      <Report isSidebarOpen={isSidebarOpen} />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
+                  }
+                />
                 <Route path="*" element={<div>404 Not Found</div>} />
               </Routes>
             </div>
