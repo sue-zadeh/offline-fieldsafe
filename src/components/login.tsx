@@ -39,14 +39,60 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     setIsLoading(true)
     setError('')
-    // ================ OFFLINE login success block ===============
 
-    if (!navigator.onLine) {
+    if (navigator.onLine) {
+      // ===== ONLINE login logic =====
+      try {
+        const response = await axios.post('/api/login', { email, password })
+        if (response.data.message === 'Login successful') {
+          // ===== ONLINE login success block ======
+          localStorage.setItem('loggedIn', 'true')
+          localStorage.setItem('firstname', response.data.firstname)
+          localStorage.setItem('lastname', response.data.lastname)
+          localStorage.setItem('role', response.data.role)
+
+          if (rememberMe) localStorage.setItem('email', email)
+          else localStorage.removeItem('email')
+
+          try {
+            await saveOfflineCredentials({
+              email: email.trim().toLowerCase(),
+              password,
+              firstname: response.data.firstname,
+              lastname: response.data.lastname,
+              role: response.data.role,
+            })
+            console.log('✅ Credentials saved offline:', email)
+          } catch (err) {
+            console.error(' Failed to save credentials offline:', err)
+          }
+
+          onLoginSuccess()
+          
+          // Preload essential data for offline use
+          import('../utils/dataPreloader').then(({ preloadEssentialDataAsync }) => {
+            preloadEssentialDataAsync()
+          }).catch(err => console.warn('Data preload import failed:', err))
+          
+          navigate('/home')
+        } else {
+          setError(response.data.message || 'Login failed.')
+        }
+      } catch (err) {
+        setError('Login failed. Please try again.')
+      } finally {
+        setIsLoading(false)
+      }
+    } else {
+      // ===== OFFLINE login logic =====
       try {
         const cached = await getOfflineCredential(email.trim().toLowerCase())
         if (cached?.password === password) {
           console.log('✅ Logged in offline')
           localStorage.setItem('loggedIn', 'true')
+          localStorage.setItem('firstname', cached.firstname)
+          localStorage.setItem('lastname', cached.lastname)
+          localStorage.setItem('role', cached.role)
           onLoginSuccess()
           navigate('/home')
           return
@@ -58,43 +104,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       } finally {
         setIsLoading(false)
       }
-      return
-    }
-
-    try {
-      const response = await axios.post('/api/login', { email, password })
-      if (response.data.message === 'Login successful') {
-        // ===== ONLINE login success block ======
-        localStorage.setItem('loggedIn', 'true')
-        localStorage.setItem('firstname', response.data.firstname)
-        localStorage.setItem('lastname', response.data.lastname)
-        localStorage.setItem('role', response.data.role)
-
-        if (rememberMe) localStorage.setItem('email', email)
-        else localStorage.removeItem('email')
-
-        try {
-          await saveOfflineCredentials({
-            email: email.trim().toLowerCase(),
-            password,
-            firstname: response.data.firstname,
-            lastname: response.data.lastname,
-            role: response.data.role,
-          })
-          console.log('✅ Credentials saved offline:', email)
-        } catch (err) {
-          console.error(' Failed to save credentials offline:', err)
-        }
-
-        onLoginSuccess()
-        navigate('/home')
-      } else {
-        setError(response.data.message || 'Login failed.')
-      }
-    } catch (err) {
-      setError('Login failed. Please try again.')
-    } finally {
-      setIsLoading(false)
     }
   }
 

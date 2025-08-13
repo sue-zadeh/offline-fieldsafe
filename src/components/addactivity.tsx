@@ -8,6 +8,8 @@ import {
   saveOfflineItem,
   getSyncedItems,
   getUnsyncedItems,
+  cacheProjects,
+  getCachedProjects,
 } from '../utils/localDB'
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
@@ -88,10 +90,51 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
   }, [activityId, fromSearch])
 
   useEffect(() => {
-    axios
-      .get<ProjectOption[]>('/api/projects')
-      .then((res) => setProjects(res.data))
-      .catch((err) => console.error('Error fetching projects', err))
+    const fetchProjects = async () => {
+      try {
+        if (navigator.onLine) {
+          const res = await axios.get<ProjectOption[]>('/api/projects')
+          setProjects(res.data)
+          await cacheProjects(res.data)
+          console.log('✅ Projects loaded and cached:', res.data.length)
+        } else {
+          console.log('🔄 Loading projects from cache (offline mode)')
+          const cachedProjects = await getCachedProjects()
+          console.log('📦 Found cached projects:', cachedProjects.length)
+          setProjects(cachedProjects)
+          if (cachedProjects.length === 0) {
+            console.warn('⚠️ No cached projects available offline')
+            // Show user feedback
+            alert(
+              'No projects available offline. Please connect to internet first to cache project data.'
+            )
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error fetching projects:', err)
+        // Always try to load cached projects if online request fails
+        try {
+          console.log('🔄 Fallback: Loading projects from cache')
+          const cachedProjects = await getCachedProjects()
+          console.log(
+            '📦 Fallback: Found cached projects:',
+            cachedProjects.length
+          )
+          setProjects(cachedProjects)
+          if (cachedProjects.length === 0) {
+            alert(
+              'No projects available. Please connect to internet to load project data.'
+            )
+          }
+        } catch (cacheErr) {
+          console.error('❌ Error loading cached projects:', cacheErr)
+          alert(
+            'Unable to load projects. Please check your connection and try again.'
+          )
+        }
+      }
+    }
+    fetchProjects()
   }, [])
 
   useEffect(() => {
@@ -119,8 +162,30 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
             alert('Failed to load the requested activity.')
           })
       } else {
+        // Offline mode - check multiple sources for activity data
         ;(async () => {
           try {
+            // First try to get from cached activities (IndexedDB)
+            const { getCachedActivity } = await import('../utils/localDB')
+            const cachedActivity = await getCachedActivity(activityId)
+
+            if (cachedActivity) {
+              setActivity({
+                id: cachedActivity.id,
+                activity_name: cachedActivity.activity_name,
+                project_id: cachedActivity.project_id,
+                activity_date: cachedActivity.activity_date,
+                notes: cachedActivity.notes || '',
+                createdBy: cachedActivity.createdBy || '',
+                status: cachedActivity.status || 'InProgress',
+                projectLocation: cachedActivity.projectLocation,
+                projectName: cachedActivity.projectName,
+              })
+              setReadOnly(true)
+              return
+            }
+
+            // If not found in cached activities, check offline queue
             const synced = await getSyncedItems()
             const unsynced = await getUnsyncedItems()
             const all = [...synced, ...unsynced]
@@ -134,11 +199,40 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
               setActivity(local)
               setReadOnly(true)
             } else {
-              alert('Offline: This activity is not available locally.')
+              console.warn('⚠️ Activity not found locally:', activityId)
+              // Reset to create new activity mode instead of showing error
+              setActivity({
+                id: 0,
+                activity_name: '',
+                project_id: 0,
+                activity_date: '',
+                notes: '',
+                createdBy: '',
+                status: 'InProgress',
+                projectLocation: '',
+                projectName: '',
+              })
+              setReadOnly(false)
+              // Show a subtle message instead of alert
+              console.log(
+                '📝 Switched to new activity mode - activity not cached offline'
+              )
             }
           } catch (err) {
             console.error('Offline fetch error:', err)
-            alert('Offline: Error loading local activity.')
+            // Instead of alert, just reset to new activity mode
+            setActivity({
+              id: 0,
+              activity_name: '',
+              project_id: 0,
+              activity_date: '',
+              notes: '',
+              createdBy: '',
+              status: 'InProgress',
+              projectLocation: '',
+              projectName: '',
+            })
+            setReadOnly(false)
           }
         })()
       }
@@ -151,6 +245,14 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
 
   async function geocodeAddress(address: string) {
     try {
+      // Skip geocoding if offline
+      if (!navigator.onLine) {
+        console.log('📍 Skipping geocoding in offline mode')
+        setMapCenter(defaultCenter)
+        setMarkerPos(defaultCenter)
+        return
+      }
+
       const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
         address
       )}&key=${GOOGLE_MAPS_API_KEY}`
@@ -189,9 +291,12 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
     if (
       !activity.activity_date ||
       !activity.activity_name ||
-      !activity.project_id
+      !activity.project_id ||
+      activity.project_id === 0
     ) {
-      alert('Please fill Activity Name, Project, and Activity Date.')
+      alert(
+        'All fields marked with * are required. Please make sure to fill them in.'
+      )
       return
     }
 
@@ -203,7 +308,7 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
         } else {
           await saveOfflineItem({
             type: 'activity',
-            data: { ...activity },
+            data: { ...activity, timestamp: Date.now() },
             synced: false,
             timestamp: Date.now(),
           })
@@ -215,9 +320,17 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
             ? 'archivedactivities'
             : 'activeactivities'
         navigate('/searchactivity', { state: { redirectTo } })
-      } else if (!readOnly && navigator.onLine) {
-        await axios.put(`/api/activities/${activityId}`, activity)
-        alert('Activity updated successfully!')
+      } else if (activityId && !readOnly) {
+        if (navigator.onLine) {
+          await axios.put(`/api/activities/${activityId}`, activity)
+          alert('Activity updated successfully!')
+        } else {
+          alert(
+            'Offline: Cannot edit activities in offline mode. Please connect to the internet.'
+          )
+          return
+        }
+
         const redirectTo =
           activity.status === 'archived'
             ? 'archivedactivities'
@@ -225,13 +338,45 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
         navigate('/searchactivity', { state: { redirectTo } })
       }
     } catch (err: any) {
-      console.error(err)
-      if (err.response?.status === 409) {
+      if (err.response && err.response.status === 409) {
         alert('Activity name already in use. Must be unique.')
       } else {
         alert('Failed to save activity.')
       }
     }
+  }
+
+  // =========== SAVE AS COPY ============= (online only)
+  const handleSaveAsCopy = async () => {
+    if (!activityId) return
+
+    try {
+      const copyName = activity.activity_name
+      await axios.post('/api/activities', {
+        ...activity,
+        activity_name: copyName,
+        id: undefined, // Remove ID to create new record
+      })
+      alert('Activity duplicated successfully!')
+
+      const redirectTo =
+        activity.status === 'archived'
+          ? 'archivedactivities'
+          : 'activeactivities'
+      navigate('/searchactivity', { state: { redirectTo } })
+    } catch (err: any) {
+      console.error(err)
+      if (err.response && err.response.status === 409) {
+        alert('Copy name also conflicts. Please change it manually.')
+      } else {
+        alert('Failed to duplicate activity.')
+      }
+    }
+  }
+
+  // 'Edit' button => allow changing the activities (online only)
+  const handleEdit = () => {
+    setReadOnly(false)
   }
 
   const handleModalNew = () => {
@@ -273,6 +418,12 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
           <h4 style={{ margin: 0 }}>
             {activityId ? 'Activity Detail' : 'Add Activity'}
           </h4>
+          {!navigator.onLine && (
+            <small className="text-danger d-block mt-1">
+              ⚠️ Offline Mode: Limited functionality available. New activities
+              will sync when online.
+            </small>
+          )}
         </Card.Header>
         <Card.Body>
           <Form>
@@ -318,13 +469,25 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
                     onChange={handleProjectChange}
                     disabled={readOnly}
                   >
-                    <option value={0}>-- Select a Project --</option>
+                    <option value={0}>
+                      {projects.length === 0
+                        ? navigator.onLine
+                          ? '-- Loading projects... --'
+                          : '-- No projects available offline --'
+                        : '-- Select a Project --'}
+                    </option>
                     {projects.map((proj) => (
                       <option key={proj.id} value={proj.id}>
                         {proj.name}
                       </option>
                     ))}
                   </Form.Select>
+                  {projects.length === 0 && !navigator.onLine && (
+                    <small className="text-muted">
+                      Projects will be available after connecting to the
+                      internet and visiting this page.
+                    </small>
+                  )}
                 </Form.Group>
               </Col>
               <Col md={6}>
@@ -396,18 +559,41 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
               />
             </Form.Group>
 
-            {!activityId && (
+            {/* Edit button for readonly mode - only show when online */}
+            {activityId && readOnly && navigator.onLine && (
               <div className="mt-3">
-                <Button variant="success" onClick={handleSave}>
-                  Save
+                <Button variant="warning" onClick={handleEdit}>
+                  Edit
                 </Button>
               </div>
             )}
 
+            {/* Show offline message when edit would normally be available */}
+            {activityId && readOnly && !navigator.onLine && (
+              <div className="mt-3">
+                <small className="text-muted">
+                  ⚠️ Edit and Delete functions are not available in offline mode
+                </small>
+              </div>
+            )}
+
+            {/* Save and Save as Copy buttons for edit mode - only show when online */}
             {activityId && !readOnly && navigator.onLine && (
               <div className="mt-3">
                 <Button variant="primary" onClick={handleSave}>
                   Save Changes
+                </Button>{' '}
+                <Button variant="info" onClick={handleSaveAsCopy}>
+                  Save as New Activity
+                </Button>
+              </div>
+            )}
+
+            {/* Save button for new activity */}
+            {!activityId && (
+              <div className="mt-3">
+                <Button variant="success" onClick={handleSave}>
+                  Save
                 </Button>
               </div>
             )}

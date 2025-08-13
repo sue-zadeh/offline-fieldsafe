@@ -1,6 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react'
 import axios from 'axios'
 import 'bootstrap/dist/css/bootstrap.min.css'
+import { saveOfflineItem, storeOfflineActivityData, getOfflineActivityData } from '../utils/localDB'
 
 interface ActivityCompleteProps {
   activityId: number // from parent (ActivityTabs)
@@ -61,6 +62,23 @@ const ActivityComplete: React.FC<ActivityCompleteProps> = ({
   const [chairpersonSignature, setChairpersonSignature] = useState('')
   const [chairpersonSignatureDate, setChairpersonSignatureDate] = useState('')
 
+  // Offline state tracking
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   // ----------------------------------------------------------------------
   // 3) Modal for sending incident via email if user says "Yes"
   // ----------------------------------------------------------------------
@@ -70,122 +88,222 @@ const ActivityComplete: React.FC<ActivityCompleteProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
   // ----------------------------------------------------------------------
-  // 4) On component load, fetch existing data
+  // 4) On component load, fetch existing data (online and offline)
   // ----------------------------------------------------------------------
   useEffect(() => {
     if (!activityId) return
-    axios
-      .get(`/api/activities/complete/${activityId}`)
-      .then((res) => {
-        if (!res.data.success) return
-        const { activity, incident } = res.data
-        // Fill the "notes" from activity
-        setNotes(activity.notes || '')
+    
+    const fetchCompleteData = async () => {
+      try {
+        if (navigator.onLine) {
+          // Online: try to get from server first
+          try {
+            const res = await axios.get(`/api/activities/complete/${activityId}`)
+            if (res.data.success) {
+              const { activity, incident } = res.data
+              // Fill the "notes" from activity
+              setNotes(activity.notes || '')
 
-        // If there's an incident, set anyIncident='Yes' and fill details
-        if (incident) {
-          setAnyIncident('Yes')
-          setTypeOfIncident(incident.typeOfIncident || '')
-          setMedicalTreatmentObtained(incident.medicalTreatmentObtained || '')
-          setProjectLocation(incident.projectLocation || '')
-          setProjectSiteManager(incident.projectSiteManager || '')
-          // store the date string exactly as returned
-          setDateOfIncident(incident.dateOfIncident || '')
-          setTimeOfIncident(incident.timeOfIncident || '')
-          setInjuredPerson(incident.injuredPerson || '')
-          setInjuredPersonGender(incident.injuredPersonGender || '')
-          setTypeOfInjury(incident.typeOfInjury || '')
-          setBodyPartInjured(incident.bodyPartInjured || '')
-          setLocationOfAccident(incident.locationOfAccident || '')
-          setWitnesses(incident.witnesses || '')
-          setTaskUndertaken(incident.taskUndertaken || '')
-          setSafetyInstructions(incident.safetyInstructions || '')
-          setPpeWorn(incident.ppeWorn || '')
-          setIncidentDescription(incident.incidentDescription || '')
-          setActionTaken(incident.actionTaken || '')
-          setDateActionImplemented(incident.dateActionImplemented || '')
-          setPreExistingInjury(incident.preExistingInjury || 'No')
-          setConditionDisclosed(incident.conditionDisclosed || 'No')
-          setRegisterOfInjuries(incident.registerOfInjuries || 'No')
-          setFurtherActionRecommended(incident.furtherActionRecommended || '')
-          setInjuredPersonSignature(incident.injuredPersonSignature || '')
-          setInjuredPersonSignatureDate(
-            incident.injuredPersonSignatureDate || ''
-          )
-          setManagerSignature(incident.managerSignature || '')
-          setManagerSignatureDate(incident.managerSignatureDate || '')
-          setCommitteeMeetingDate(incident.committeeMeetingDate || '')
-          setCommitteeMeetingComments(incident.committeeMeetingComments || '')
-          setChairpersonSignature(incident.chairpersonSignature || '')
-          setChairpersonSignatureDate(incident.chairpersonSignatureDate || '')
-        } else {
-          // No incident found
-          setAnyIncident('No')
+              // If there's an incident, set anyIncident='Yes' and fill details
+              if (incident) {
+                setAnyIncident('Yes')
+                setTypeOfIncident(incident.typeOfIncident || '')
+                setMedicalTreatmentObtained(incident.medicalTreatmentObtained || '')
+                setProjectLocation(incident.projectLocation || '')
+                setProjectSiteManager(incident.projectSiteManager || '')
+                // store the date string exactly as returned
+                setDateOfIncident(incident.dateOfIncident || '')
+                setTimeOfIncident(incident.timeOfIncident || '')
+                setInjuredPerson(incident.injuredPerson || '')
+                setInjuredPersonGender(incident.injuredPersonGender || '')
+                setTypeOfInjury(incident.typeOfInjury || '')
+                setBodyPartInjured(incident.bodyPartInjured || '')
+                setLocationOfAccident(incident.locationOfAccident || '')
+                setWitnesses(incident.witnesses || '')
+                setTaskUndertaken(incident.taskUndertaken || '')
+                setSafetyInstructions(incident.safetyInstructions || '')
+                setPpeWorn(incident.ppeWorn || '')
+                setIncidentDescription(incident.incidentDescription || '')
+                setActionTaken(incident.actionTaken || '')
+                setDateActionImplemented(incident.dateActionImplemented || '')
+                setPreExistingInjury(incident.preExistingInjury || 'No')
+                setConditionDisclosed(incident.conditionDisclosed || 'No')
+                setRegisterOfInjuries(incident.registerOfInjuries || 'No')
+                setFurtherActionRecommended(incident.furtherActionRecommended || '')
+                setInjuredPersonSignature(incident.injuredPersonSignature || '')
+                setInjuredPersonSignatureDate(
+                  incident.injuredPersonSignatureDate || ''
+                )
+                setManagerSignature(incident.managerSignature || '')
+                setManagerSignatureDate(incident.managerSignatureDate || '')
+                setCommitteeMeetingDate(incident.committeeMeetingDate || '')
+                setCommitteeMeetingComments(incident.committeeMeetingComments || '')
+                setChairpersonSignature(incident.chairpersonSignature || '')
+                setChairpersonSignatureDate(incident.chairpersonSignatureDate || '')
+              } else {
+                // No incident found
+                setAnyIncident('No')
+              }
+              return
+            }
+          } catch (err) {
+            console.log('Error fetching online complete data, checking offline storage:', err)
+          }
         }
-      })
-      .catch((err) => console.error('Error loading complete data:', err))
+        
+        // Offline or server error: check offline storage
+        const offlineNotes = await getOfflineActivityData(activityId, 'complete_notes')
+        if (offlineNotes && offlineNotes.length > 0) {
+          const latestNotes = offlineNotes[offlineNotes.length - 1]
+          setNotes(latestNotes.notes || '')
+        }
+        
+        const offlineIncident = await getOfflineActivityData(activityId, 'complete_incident')
+        if (offlineIncident && offlineIncident.length > 0) {
+          const latestIncident = offlineIncident[offlineIncident.length - 1]
+          setAnyIncident('Yes')
+          setTypeOfIncident(latestIncident.typeOfIncident || '')
+          setMedicalTreatmentObtained(latestIncident.medicalTreatmentObtained || '')
+          setProjectLocation(latestIncident.projectLocation || '')
+          setProjectSiteManager(latestIncident.projectSiteManager || '')
+          setDateOfIncident(latestIncident.dateOfIncident || '')
+          setTimeOfIncident(latestIncident.timeOfIncident || '')
+          setInjuredPerson(latestIncident.injuredPerson || '')
+          setInjuredPersonGender(latestIncident.injuredPersonGender || '')
+          setTypeOfInjury(latestIncident.typeOfInjury || '')
+          setBodyPartInjured(latestIncident.bodyPartInjured || '')
+          setLocationOfAccident(latestIncident.locationOfAccident || '')
+          setWitnesses(latestIncident.witnesses || '')
+          setTaskUndertaken(latestIncident.taskUndertaken || '')
+          setSafetyInstructions(latestIncident.safetyInstructions || '')
+          setPpeWorn(latestIncident.ppeWorn || '')
+          setIncidentDescription(latestIncident.incidentDescription || '')
+          setActionTaken(latestIncident.actionTaken || '')
+          setDateActionImplemented(latestIncident.dateActionImplemented || '')
+          setPreExistingInjury(latestIncident.preExistingInjury || 'No')
+          setConditionDisclosed(latestIncident.conditionDisclosed || 'No')
+          setRegisterOfInjuries(latestIncident.registerOfInjuries || 'No')
+          setFurtherActionRecommended(latestIncident.furtherActionRecommended || '')
+          setInjuredPersonSignature(latestIncident.injuredPersonSignature || '')
+          setInjuredPersonSignatureDate(latestIncident.injuredPersonSignatureDate || '')
+          setManagerSignature(latestIncident.managerSignature || '')
+          setManagerSignatureDate(latestIncident.managerSignatureDate || '')
+          setCommitteeMeetingDate(latestIncident.committeeMeetingDate || '')
+          setCommitteeMeetingComments(latestIncident.committeeMeetingComments || '')
+          setChairpersonSignature(latestIncident.chairpersonSignature || '')
+          setChairpersonSignatureDate(latestIncident.chairpersonSignatureDate || '')
+        }
+      } catch (err) {
+        console.error('Error loading complete data:', err)
+      }
+    }
+
+    fetchCompleteData()
   }, [activityId])
 
   // ----------------------------------------------------------------------
-  // 5) Submit Handler -> POST /api/activities/complete
+  // 5) Submit Handler -> POST /api/activities/complete (with offline support)
   // ----------------------------------------------------------------------
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    try {
-      const payload = {
-        activityId,
-        notes,
-        anyIncident,
-        incidentDetails:
-          anyIncident === 'Yes'
-            ? {
-                typeOfIncident,
-                medicalTreatmentObtained,
-                projectLocation,
-                projectSiteManager,
-                dateOfIncident,
-                timeOfIncident,
-                injuredPerson,
-                injuredPersonGender,
-                typeOfInjury,
-                bodyPartInjured,
-                locationOfAccident,
-                witnesses,
-                taskUndertaken,
-                safetyInstructions,
-                ppeWorn,
-                incidentDescription,
-                actionTaken,
-                dateActionImplemented,
-                preExistingInjury,
-                conditionDisclosed,
-                registerOfInjuries,
-                furtherActionRecommended,
-                injuredPersonSignature,
-                injuredPersonSignatureDate,
-                managerSignature,
-                managerSignatureDate,
-                committeeMeetingDate,
-                committeeMeetingComments,
-                chairpersonSignature,
-                chairpersonSignatureDate,
-              }
-            : null,
-      }
+    
+    const payload = {
+      activityId,
+      notes,
+      anyIncident,
+      incidentDetails:
+        anyIncident === 'Yes'
+          ? {
+              typeOfIncident,
+              medicalTreatmentObtained,
+              projectLocation,
+              projectSiteManager,
+              dateOfIncident,
+              timeOfIncident,
+              injuredPerson,
+              injuredPersonGender,
+              typeOfInjury,
+              bodyPartInjured,
+              locationOfAccident,
+              witnesses,
+              taskUndertaken,
+              safetyInstructions,
+              ppeWorn,
+              incidentDescription,
+              actionTaken,
+              dateActionImplemented,
+              preExistingInjury,
+              conditionDisclosed,
+              registerOfInjuries,
+              furtherActionRecommended,
+              injuredPersonSignature,
+              injuredPersonSignatureDate,
+              managerSignature,
+              managerSignatureDate,
+              committeeMeetingDate,
+              committeeMeetingComments,
+              chairpersonSignature,
+              chairpersonSignatureDate,
+            }
+          : null,
+    }
 
-      const response = await axios.post('/api/activities/complete', payload)
-      if (response.data.success) {
-        alert('Activity has been completed/saved!')
-        // If user said "Yes," open email modal
-        if (anyIncident === 'Yes') {
-          setShowEmailModal(true)
+    try {
+      if (navigator.onLine) {
+        const response = await axios.post('/api/activities/complete', payload)
+        if (response.data.success) {
+          alert('Activity has been completed/saved!')
+          // If user said "Yes," open email modal
+          if (anyIncident === 'Yes') {
+            setShowEmailModal(true)
+          }
+        } else {
+          alert('Error: ' + response.data.message)
         }
       } else {
-        alert('Error: ' + response.data.message)
+        // Offline mode: save locally and queue for sync
+        await saveOfflineItem({
+          type: 'activity_complete',
+          data: payload,
+          synced: false,
+          timestamp: Date.now()
+        })
+        
+        // Store notes for persistence
+        await storeOfflineActivityData(activityId, 'complete_notes', [{ notes, timestamp: Date.now() }])
+        
+        // Store incident data if present
+        if (anyIncident === 'Yes') {
+          await storeOfflineActivityData(activityId, 'complete_incident', [payload.incidentDetails])
+        }
+        
+        alert('Activity completion data saved offline and will sync when online!')
       }
     } catch (error) {
       console.error('Error submitting completion: ', error)
-      alert('Error occurred, see console for details.')
+      
+      // Fallback to offline storage on network error
+      try {
+        await saveOfflineItem({
+          type: 'activity_complete',
+          data: payload,
+          synced: false,
+          timestamp: Date.now()
+        })
+        
+        // Store notes for persistence
+        await storeOfflineActivityData(activityId, 'complete_notes', [{ notes, timestamp: Date.now() }])
+        
+        // Store incident data if present
+        if (anyIncident === 'Yes') {
+          await storeOfflineActivityData(activityId, 'complete_incident', [payload.incidentDetails])
+        }
+        
+        alert('Network error - data saved offline and will sync when online!')
+      } catch (offlineError) {
+        console.error('Error saving offline:', offlineError)
+        alert('Error occurred while saving data.')
+      }
     }
   }
 
@@ -263,6 +381,12 @@ const ActivityComplete: React.FC<ActivityCompleteProps> = ({
         >
           Activity Complete
         </h4>
+
+        {isOffline && (
+          <div className="alert alert-warning text-center mb-3" role="alert">
+            <strong>Offline Mode:</strong> Activity completion data will be saved locally and synced when online.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="card card-body mb-3">
           {/* === NOTES === */}

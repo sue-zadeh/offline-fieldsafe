@@ -1,6 +1,10 @@
 {
   "name": "FieldSafe",
   "short_name": "FieldSafe",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#009486",
   "icons": [
     {
       "src": "/assets/icons/icon-192x192.png",
@@ -12,9 +16,5 @@
       "type": "image/png",
       "sizes": "512x512"
     }
-  ],
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#009486"
+  ]
 }

@@ -7,7 +7,7 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { replayQueue } from './utils/localDB'
-import { useNetworkStatus } from './hooks/useNetworkStatus'
+import { preloadDataForOffline } from './utils/offlinePreloader'
 import Navbar from './components/navbar'
 import Login from './components/login'
 import Home from './components/home'
@@ -43,7 +43,7 @@ const App: React.FC = () => {
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const INACTIVITY_LIMIT = 1000 * 60_000
-  const isOnline = useNetworkStatus()
+  // Removed isOnline since global offline banner was removed
   const location = useLocation()
   const isLoginPage =
     location.pathname === '/' || location.pathname === '/login'
@@ -60,6 +60,12 @@ const App: React.FC = () => {
   useEffect(() => {
     window.addEventListener('online', replayQueue)
     replayQueue()
+    
+    // Preload data when online
+    if (navigator.onLine) {
+      preloadDataForOffline()
+    }
+    
     return () => window.removeEventListener('online', replayQueue)
   }, [])
 
@@ -206,11 +212,7 @@ const App: React.FC = () => {
           </button>
         </div>
       )}
-      {!isLoginPage && !isOnline && (
-        <div className="alert alert-warning text-center">
-          You are offline. Any new data will be stored locally and synced later.
-        </div>
-      )}
+      {/* Removed global offline banner - components handle their own offline indicators */}
 
       {!isLoggedIn ? (
         <Login

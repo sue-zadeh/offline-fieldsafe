@@ -15,8 +15,8 @@ export default defineConfig({
         'robots.txt',
         'logo0.png',
         'logo-lil.png',
-        'welcompage2.jpg',
         'offline.html',
+        // Removed large images - they'll be cached on-demand via runtime caching
       ],
       devOptions: {
         enabled: true, // ✅ see service worker working in dev mode
@@ -27,7 +27,7 @@ export default defineConfig({
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',
-        theme_color: '#0a0e2c',
+        theme_color: '#0094B6',
         icons: [
           {
             src: '/assets/icons/icon-192x192.png',
@@ -43,7 +43,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest,ico}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,json}'], // Removed jpg to avoid large files
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit instead of default 2MB
         additionalManifestEntries: [
           { url: '/volunteer', revision: null },
           { url: '/registervolunteer', revision: null },
@@ -73,19 +74,36 @@ export default defineConfig({
         ],
         runtimeCaching: [
           {
-            urlPattern: /https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: { cacheName: 'google-fonts' },
-          },
-          {
-            urlPattern: /\/assets\/icons\/.*\.png$/i,
-            handler: 'CacheFirst',
-            options: { cacheName: 'app-icons' },
-          },
-          {
-            urlPattern: /\/api\/.*$/i,
+            urlPattern: /^https:\/\/your-api-domain\/api\//,
             handler: 'NetworkFirst',
-            options: { cacheName: 'api-cache' },
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 10,
+              expiration: { maxEntries: 100 },
+            },
+          },
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'image-cache',
+              expiration: { 
+                maxEntries: 50,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              },
+            },
+          },
+          {
+            urlPattern: /\.(jpg|jpeg)$/,
+            handler: 'NetworkFirst', // For large images, try network first
+            options: {
+              cacheName: 'large-image-cache',
+              networkTimeoutSeconds: 5,
+              expiration: { 
+                maxEntries: 20,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days for large images
+              },
+            },
           },
         ],
       },

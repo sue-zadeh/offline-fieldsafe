@@ -289,4 +289,79 @@ router.post('/activity_objectives_direct', async (req, res) => {
 })
 
 
+// POST => /api/activity_objectives_for_existing
+// Create activity_objectives entry for an existing project objective
+router.post('/activity_objectives_for_existing', async (req, res) => {
+  try {
+    const { activity_id, objective_id, amount } = req.body
+    if (!activity_id || !objective_id) {
+      return res.status(400).json({ message: 'Missing activity_id or objective_id.' })
+    }
+
+    console.log(`✨ Creating activity_objective for activity ${activity_id}, objective ${objective_id}`)
+    
+    // Insert into activity_objectives
+    const [result] = await pool.query(
+      `INSERT INTO activity_objectives (activity_id, objective_id, amount) VALUES (?, ?, ?)`,
+      [activity_id, objective_id, amount ?? null]
+    )
+
+    console.log(`✅ Created activity_objective with ID ${result.insertId}`)
+    return res.status(201).json({ 
+      id: result.insertId,
+      message: 'Activity objective created successfully.' 
+    })
+  } catch (err) {
+    console.error('Error creating activity objective:', err)
+    return res.status(500).json({ message: 'Failed to create activity objective.' })
+  }
+})
+
+// NEW: Get ALL project objectives with activity values (for comprehensive outcome view)
+router.get('/project_objectives_with_activity_values', async (req, res) => {
+  const { projectId, activityId } = req.query
+  
+  if (!projectId || !activityId) {
+    return res.status(400).json({ message: 'Missing projectId or activityId parameters' })
+  }
+
+  try {
+    console.log(`🎯 Loading ALL project objectives for project ${projectId} with activity ${activityId} values`)
+
+    // Get ALL project objectives, with their activity-specific amounts if they exist
+    const [rows] = await pool.query(
+      `
+        SELECT 
+          po.objective_id,
+          o.title,
+          o.measurement,
+          COALESCE(ao.id, NULL) AS activityObjectiveId,
+          COALESCE(ao.amount, NULL) AS amount
+        FROM project_objectives po
+        JOIN objectives o ON po.objective_id = o.id
+        LEFT JOIN activity_objectives ao ON (ao.objective_id = po.objective_id AND ao.activity_id = ?)
+        WHERE po.project_id = ?
+        ORDER BY o.title
+      `,
+      [activityId, projectId]
+    )
+
+    console.log(`✅ Found ${rows.length} project objectives for comprehensive view`)
+    
+    // Transform to match the expected interface
+    const objectives = rows.map(row => ({
+      activityObjectiveId: row.activityObjectiveId || row.objective_id, // Use objective_id if no activity_objective exists yet
+      objective_id: row.objective_id,
+      title: row.title,
+      measurement: row.measurement,
+      amount: row.amount
+    }))
+
+    res.json(objectives)
+  } catch (err) {
+    console.error('Error in GET /project_objectives_with_activity_values:', err)
+    res.status(500).json({ message: 'Failed to load comprehensive project objectives' })
+  }
+})
+
 export default router

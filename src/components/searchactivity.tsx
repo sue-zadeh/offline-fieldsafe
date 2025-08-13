@@ -9,9 +9,12 @@ import {
   Navbar,
   Nav,
 } from 'react-bootstrap'
+import {
+  cacheActivity,
+  getCachedActivity,
+} from '../utils/localDB'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { FaSearch, FaArrowRight } from 'react-icons/fa' // <== removed FaTrashAlt
-import { getDB } from '../utils/localDB'
 
 interface ActivityRow {
   id: number
@@ -50,16 +53,20 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
       try {
         setLoading(true)
         let activities: ActivityRow[] = []
-
+        
         if (navigator.onLine) {
+          console.log('🔄 Fetching activities from API...')
           const res = await axios.get<ActivityRow[]>('/api/activities')
           activities = res.data
+          console.log('✅ Fetched activities from API:', activities.length)
 
           const { cacheActivities } = await import('../utils/localDB')
           await cacheActivities(activities)
         } else {
+          console.log('📱 Offline mode - loading from cache...')
           const { getCachedActivities } = await import('../utils/localDB')
           activities = await getCachedActivities()
+          console.log('✅ Loaded activities from cache:', activities.length)
         }
 
         const { getSyncedItems, getUnsyncedItems } = await import(
@@ -71,13 +78,17 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
           .filter((i) => i.type === 'activity')
           .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
 
+        console.log('📦 Offline activities found:', offline.length)
         activities = [...activities, ...offline]
-
+        
+        console.log('📊 Total activities to display:', activities.length)
         setAllActivities(activities)
       } catch (err) {
-        console.error('Error fetching activities:', err)
+        console.error('❌ Error fetching activities:', err)
         setError('Failed to load activity notes.')
 
+        // Fallback to cached data
+        console.log('🔄 Falling back to cached data...')
         try {
           const { getCachedActivities, getSyncedItems, getUnsyncedItems } =
             await import('../utils/localDB')
@@ -89,6 +100,7 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
 
           const merged = [...cached, ...offline]
+          console.log('📦 Fallback activities loaded:', merged.length)
           setAllActivities(merged)
         } catch (cacheErr) {
           console.error('Error loading cached activities:', cacheErr)
@@ -148,29 +160,55 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
   const handleGoToDetail = async (act: ActivityRow, e: React.MouseEvent) => {
     e.stopPropagation()
 
-    if (!navigator.onLine) {
+    if (navigator.onLine) {
+      // Online: Cache the full activity data and navigate
       try {
-        const db = await getDB()
-        const tx = db.transaction('activities', 'readonly')
-        const store = tx.objectStore('activities')
-        const result = await store.get(act.id)
-
-        if (!result) {
-          alert('Offline: This activity is not available locally.')
-          return
-        }
+        const response = await axios.get(`/api/activities/${act.id}`)
+        await cacheActivity(response.data) // Cache the complete activity data
+        console.log('✅ Activity cached for offline access:', act.id)
       } catch (err) {
-        console.error('Offline activity lookup failed', err)
-        alert('Offline: Failed to check local activity data.')
-        return
+        console.warn('Failed to cache activity for offline:', err)
+      }
+      navigate('/activity-notes', {
+        state: { activityId: act.id, fromSearch: true },
+      })
+    } else {
+      // Offline: check multiple sources for activity data
+      let activityFound = false
+
+      // First check cached activities
+      const cachedActivity = await getCachedActivity(act.id)
+      if (cachedActivity) {
+        activityFound = true
+      } else {
+        // Check offline queue for the activity
+        try {
+          const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+          const synced = await getSyncedItems()
+          const unsynced = await getUnsyncedItems()
+          const allOfflineItems = [...synced, ...unsynced]
+            .filter((i) => i.type === 'activity')
+            .map((i) => i.data)
+
+          const offlineActivity = allOfflineItems.find((a) => a.id === act.id)
+          if (offlineActivity) {
+            activityFound = true
+          }
+        } catch (err) {
+          console.error('Error checking offline queue:', err)
+        }
+      }
+
+      if (activityFound) {
+        navigate('/activity-notes', {
+          state: { activityId: act.id, fromSearch: true },
+        })
+      } else {
+        alert('Activity details are not available offline. Please connect to the internet to view this activity.')
       }
     }
-
-    navigate('/activity-notes', {
-      state: { activityId: act.id, fromSearch: true },
-    })
   }
-
+  
   return (
     <div
       className={`container-fluid ${
@@ -249,6 +287,14 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
         </Alert>
       )}
 
+      {/* Offline info alert */}
+      {!navigator.onLine && allActivities.length === 0 && (
+        <Alert variant="info" className="text-center">
+          No activities are available offline.<br />
+          Please connect to the internet and open the app at least once to cache activities for offline use.
+        </Alert>
+      )}
+
       <h5 className="p-2" style={{ color: '#0094B6' }}>
         Choose an activity by pressing Arrow Key
       </h5>
@@ -279,28 +325,43 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
           </tr>
         </thead>
         <tbody>
-          {filteredActivities.map((act) => (
-            <tr
-              key={act.id}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => handleGoToDetail(act, e)}
-            >
-              <td>{formatDate(act.activity_date)}</td>
-              <td>{act.activity_name}</td>
-              <td>{act.projectName || ''}</td>
-              <td>{act.projectLocation}</td>
-              <td>{act.status}</td>
-              <td className="text-center">{act.createdBy || 'N/A'}</td>
-              <td className="text-end">
-                <span
-                  style={{ fontSize: '1.5rem', cursor: 'pointer' }}
-                  onClick={(e) => handleGoToDetail(act, e)}
-                >
-                  <FaArrowRight />
-                </span>
+          {filteredActivities.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="text-center p-4">
+                {allActivities.length === 0 
+                  ? 'No activities found. Create your first activity to get started.'
+                  : searchTerm 
+                    ? `No activities match "${searchTerm}"`
+                    : activeTab === 'activeactivities' 
+                      ? 'No active activities found.'
+                      : 'No archived activities found.'
+                }
               </td>
             </tr>
-          ))}
+          ) : (
+            filteredActivities.map((act) => (
+              <tr
+                key={act.id}
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => handleGoToDetail(act, e)}
+              >
+                <td>{formatDate(act.activity_date)}</td>
+                <td>{act.activity_name}</td>
+                <td>{act.projectName || ''}</td>
+                <td>{act.projectLocation}</td>
+                <td>{act.status}</td>
+                <td className="text-center">{act.createdBy || 'N/A'}</td>
+                <td className="text-end">
+                  <span
+                    style={{ fontSize: '1.5rem', cursor: 'pointer' }}
+                    onClick={(e) => handleGoToDetail(act, e)}
+                  >
+                    <FaArrowRight />
+                  </span>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </Table>
     </div>

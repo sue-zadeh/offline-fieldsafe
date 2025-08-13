@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button } from 'react-bootstrap'
 import { useLocation } from 'react-router-dom'
 import axios from 'axios'
-import { getDB } from '../utils/localDB'
+import {cacheActivity, getCachedActivity } from '../utils/localDB'
 
 import AddActivity from './addactivity'
 import ActivityRisk from './activityrisk'
@@ -46,23 +46,14 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
   const [currentStep, setCurrentStep] = useState(0)
 
   useEffect(() => {
+    const id = location.state?.activityId
+    if (id) {
+      loadActivityDetails(id)
+    }
     if (location.state?.startStep !== undefined) {
       setCurrentStep(location.state.startStep)
     }
-
-    if (location.state?.activityId) {
-      loadActivityDetails(location.state.activityId)
-    }
   }, [location.state])
-
-  async function getOfflineActivity(id: number) {
-    const db = await getDB()
-    const tx = db.transaction('activities', 'readonly')
-    const store = tx.objectStore('activities')
-    const result = await store.get(Number(id))
-    await tx.done
-    return result
-  }
 
   async function loadActivityDetails(id: number) {
     try {
@@ -70,27 +61,40 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
         const res = await axios.get(`/api/activities/${id}`)
         const data = res.data
         setSelectedActivityId(data.id)
-        setSelectedActivityName(data.activity_name || '')
+        setSelectedActivityName(data.activity_name || data.title || '')
         setSelectedProjectName(data.projectName || '')
+        await cacheActivity(data) // cache for offline
       } else {
-        const offline = await getOfflineActivity(id)
+        const offline = await getCachedActivity(id)
         if (offline) {
           setSelectedActivityId(offline.id)
-          setSelectedActivityName(offline.activity_name || 'Offline Activity')
+          setSelectedActivityName(
+            offline.activity_name || offline.title || 'Offline Activity'
+          )
           setSelectedProjectName(offline.projectName || 'Offline Project')
         } else {
-          alert('Offline: This activity is not available locally.')
+          console.warn('⚠️ Activity not found locally:', id)
+          // Don't show alert - just handle gracefully
+          setSelectedActivityId(null)
+          setSelectedActivityName('')
+          setSelectedProjectName('')
         }
       }
     } catch (err) {
       if (!navigator.onLine) {
-        const offline = await getOfflineActivity(id)
+        const offline = await getCachedActivity(id)
         if (offline) {
           setSelectedActivityId(offline.id)
-          setSelectedActivityName(offline.activity_name || 'Offline Activity')
+          setSelectedActivityName(
+            offline.activity_name || offline.title || 'Offline Activity'
+          )
           setSelectedProjectName(offline.projectName || 'Offline Project')
         } else {
-          alert('Offline: This activity is not available locally.')
+          console.warn('⚠️ Activity not found in cache during offline mode:', id)
+          // Show a more user-friendly message or just handle silently
+          setSelectedActivityId(null)
+          setSelectedActivityName('')
+          setSelectedProjectName('')
         }
       } else {
         console.error('❌ Failed to load activity details (online)', err)

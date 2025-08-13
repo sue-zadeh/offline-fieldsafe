@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
+import { saveOfflineItem, storeOfflineActivityData, getOfflineActivityData, cacheActivityAssignments, getCachedActivityAssignments } from '../utils/localDB'
 
 interface ActivityOutcomeProps {
   activityId: number
@@ -38,6 +39,7 @@ const ActivityOutcome: React.FC<ActivityOutcomeProps> = ({ activityId }) => {
   const [objectives, setObjectives] = useState<IProjectObjective[]>([])
   const [editingObjId, setEditingObjId] = useState<number | null>(null)
   const [editAmount, setEditAmount] = useState('')
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
   // ============ Predator State ============
   const [predatorList, setPredatorList] = useState<IPredatorOption[]>([])
@@ -56,44 +58,174 @@ const ActivityOutcome: React.FC<ActivityOutcomeProps> = ({ activityId }) => {
   const [othersDescription, setOthersDescription] = useState('')
 
   const [newObjectiveTitle, setNewObjectiveTitle] = useState('')
-const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
+  const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
 
   // ============ On Load, fetch project objectives & predator data ============
   useEffect(() => {
     if (!activityId) return
-
-    // Load objectives for this activity
-    axios
-      .get(`/api/activity_outcome/${activityId}`)
-      .then((res) => {
-        setObjectives(res.data.objectives || [])
-      })
-      .catch((err) => {
-        console.error('Error loading project objectives:', err)
-        alert('Failed to load project objectives.')
-      })
-
-    // fetch the predator list
-    axios
-      .get<IPredatorOption[]>('/api/predator')
-      .then((res) => setPredatorList(res.data))
-      .catch((err) => {
-        console.error('Error fetching predator list:', err)
-        alert('Failed to load predator list.')
-      })
-
-    // fetch activity's existing predator records
-    axios
-      .get<IPredatorRecord[]>(`/api/activity_predator/${activityId}`)
-      .then((res) => {
-        setPredatorRecords(res.data)
-      })
-      .catch((err) => {
-        console.error('Error fetching predator records:', err)
-        alert('Failed to load predator records.')
-      })
+    loadObjectives()
+    loadPredatorData()
+    loadPredatorRecords()
   }, [activityId])
+
+  const loadObjectives = async () => {
+    console.log(`🔍 Loading objectives for activity ${activityId}, online: ${navigator.onLine}`)
+    
+    try {
+      let objectivesData: IProjectObjective[] = []
+      
+      if (navigator.onLine) {
+        try {
+          // First, get the project ID for this activity
+          const activityRes = await axios.get(`/api/activities/${activityId}`)
+          const projectId = activityRes.data.project_id
+          console.log(`🎯 Activity ${activityId} belongs to project ${projectId}`)
+          
+          // Then, get ALL project objectives and their activity-specific values
+          const res = await axios.get(`/api/project_objectives_with_activity_values?projectId=${projectId}&activityId=${activityId}`)
+          objectivesData = res.data || []
+          console.log(`✅ Loaded ${objectivesData.length} project objectives from server`)
+          
+          // Cache server data for offline viewing
+          await cacheActivityAssignments(activityId, 'objectives', objectivesData)
+          console.log(`💾 Cached ${objectivesData.length} objectives for offline viewing`)
+        } catch (err) {
+          console.log('❌ Server request failed, trying fallback API:', err)
+          // Fallback to original API if new one doesn't exist yet
+          try {
+            const res = await axios.get(`/api/activity_outcome/${activityId}`)
+            objectivesData = res.data.objectives || []
+            console.log(`✅ Loaded ${objectivesData.length} objectives from fallback API`)
+            
+            // Cache server data for offline viewing
+            await cacheActivityAssignments(activityId, 'objectives', objectivesData)
+            console.log(`💾 Cached ${objectivesData.length} objectives for offline viewing`)
+          } catch (fallbackErr) {
+            console.log('❌ Fallback API also failed, trying cached data:', fallbackErr)
+            // If server fails, try cached historical data
+            objectivesData = await getCachedActivityAssignments(activityId, 'objectives')
+            console.log(`📚 Loaded ${objectivesData.length} objectives from cache`)
+          }
+        }
+      } else {
+        // Offline: load cached historical data first
+        objectivesData = await getCachedActivityAssignments(activityId, 'objectives')
+        console.log(`📚 Offline: Loaded ${objectivesData.length} historical objectives from cache`)
+      }
+      
+      // Always load offline assignments and merge them
+      const offlineObjectives: IProjectObjective[] = await getOfflineActivityData(activityId, 'objectives')
+      console.log(`📦 Found ${offlineObjectives.length} offline objective assignments`)
+      
+      // Merge cached/server and offline data (avoid duplicates)
+      const allObjectiveIds = new Set(objectivesData.map(o => o.activityObjectiveId || o.objective_id))
+      const offlineOnlyObjectives = offlineObjectives.filter((o: IProjectObjective) => 
+        !allObjectiveIds.has(o.activityObjectiveId || o.objective_id)
+      )
+      
+      const finalObjectives = [...objectivesData, ...offlineOnlyObjectives]
+      console.log(`📊 Total objectives: ${finalObjectives.length} (${objectivesData.length} historical + ${offlineOnlyObjectives.length} offline-only)`)
+      setObjectives(finalObjectives)
+      
+    } catch (err) {
+      console.error('❌ Error loading project objectives:', err)
+      // Final fallback to only offline data
+      try {
+        const offlineObjectives: IProjectObjective[] = await getOfflineActivityData(activityId, 'objectives')
+        console.log(`🔄 Final fallback: Using ${offlineObjectives.length} offline objectives`)
+        setObjectives(offlineObjectives)
+      } catch (offlineErr) {
+        console.error('❌ Error loading offline objectives:', offlineErr)
+        alert('Failed to load project objectives.')
+      }
+    }
+  }
+
+  const loadPredatorData = async () => {
+    try {
+      if (navigator.onLine) {
+        const res = await axios.get<IPredatorOption[]>('/api/predator')
+        setPredatorList(res.data)
+      } else {
+        // In offline mode, you might want to cache predator options too
+        // For now, we'll show empty if offline and no cache
+        setPredatorList([])
+      }
+    } catch (err) {
+      console.error('Error fetching predator list:', err)
+      if (navigator.onLine) {
+        alert('Failed to load predator list.')
+      }
+    }
+  }
+
+  const loadPredatorRecords = async () => {
+    console.log(`🔍 Loading predator records for activity ${activityId}, online: ${navigator.onLine}`)
+    
+    try {
+      let predatorData: IPredatorRecord[] = []
+      
+      if (navigator.onLine) {
+        try {
+          const res = await axios.get<IPredatorRecord[]>(`/api/activity_predator/${activityId}`)
+          predatorData = res.data
+          console.log(`✅ Loaded ${predatorData.length} predator records from server`)
+          
+          // Cache server data for offline viewing
+          await cacheActivityAssignments(activityId, 'predator_records', predatorData)
+          console.log(`💾 Cached ${predatorData.length} predator records for offline viewing`)
+        } catch (err) {
+          console.log('❌ Server request failed, trying cached data:', err)
+          // If server fails, try cached historical data
+          predatorData = await getCachedActivityAssignments(activityId, 'predator_records')
+          console.log(`📚 Loaded ${predatorData.length} predator records from cache`)
+        }
+      } else {
+        // Offline: load cached historical data first
+        predatorData = await getCachedActivityAssignments(activityId, 'predator_records')
+        console.log(`📚 Offline: Loaded ${predatorData.length} historical predator records from cache`)
+      }
+      
+      // Always load offline assignments and merge them
+      const offlinePredatorRecords: IPredatorRecord[] = await getOfflineActivityData(activityId, 'predator_records')
+      console.log(`📦 Found ${offlinePredatorRecords.length} offline predator record assignments`)
+      
+      // Merge cached/server and offline data (avoid duplicates)
+      const allRecordIds = new Set(predatorData.map(p => p.id))
+      const offlineOnlyRecords = offlinePredatorRecords.filter((p: IPredatorRecord) => !allRecordIds.has(p.id))
+      
+      const finalRecords = [...predatorData, ...offlineOnlyRecords]
+      console.log(`📊 Total predator records: ${finalRecords.length} (${predatorData.length} historical + ${offlineOnlyRecords.length} offline-only)`)
+      setPredatorRecords(finalRecords)
+      
+    } catch (err) {
+      console.error('❌ Error fetching predator records:', err)
+      // Final fallback to only offline data
+      try {
+        const offlinePredatorRecords: IPredatorRecord[] = await getOfflineActivityData(activityId, 'predator_records')
+        console.log(`🔄 Final fallback: Using ${offlinePredatorRecords.length} offline predator records`)
+        setPredatorRecords(offlinePredatorRecords)
+      } catch (offlineErr) {
+        console.error('❌ Error loading offline predator records:', offlineErr)
+        alert('Failed to load predator records.')
+      }
+    }
+  }
 
   // Filter out any “Establishing Predator Control” objective
   const filteredObjectives = objectives.filter(
@@ -113,10 +245,19 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
   }
 
   const handleSaveObjective = async (activityObjectiveId: number) => {
-    //  No change: first should Find the original objective in our state
+    // Find the original objective in our state
     const originalObj = objectives.find(
       (o) => o.activityObjectiveId === activityObjectiveId
     )
+    
+    if (!originalObj) {
+      alert('Objective not found')
+      return
+    }
+
+    // Check if this is an existing activity_objective (has real activityObjectiveId) 
+    // or a new one (activityObjectiveId equals objective_id, meaning no activity_objectives entry exists)
+    const isExistingActivityObjective = originalObj.activityObjectiveId !== originalObj.objective_id
     // convert `null` to an empty string, or number -> string
     const originalAmountStr =
       originalObj?.amount != null ? String(originalObj.amount) : ''
@@ -132,13 +273,68 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
     }
 
     try {
-      await axios.put(`/api/activity_objectives/${activityObjectiveId}`, {
-        amount: editAmount ? Number(editAmount) : null,
-      })
-      // Re-fetch the objectives for this activity
-      const resp = await axios.get(`/api/activity_outcome/${activityId}`)
-      setObjectives(resp.data.objectives || [])
-      alert('Saved successfully!')
+      if (navigator.onLine) {
+        if (isExistingActivityObjective) {
+          // UPDATE existing activity_objectives entry
+          console.log(`💾 Updating existing activity objective ${activityObjectiveId}`)
+          await axios.put(`/api/activity_objectives/${activityObjectiveId}`, {
+            amount: editAmount ? Number(editAmount) : null,
+          })
+        } else {
+          // CREATE new activity_objectives entry
+          console.log(`✨ Creating new activity objective for objective ${originalObj.objective_id}`)
+          await axios.post('/api/activity_objectives_for_existing', {
+            activity_id: activityId,
+            objective_id: originalObj.objective_id,
+            amount: editAmount ? Number(editAmount) : null,
+          })
+        }
+        
+        // Re-fetch the objectives for this activity
+        await loadObjectives()
+        alert('Saved successfully!')
+      } else {
+        // Offline mode - save for later sync
+        if (isExistingActivityObjective) {
+          // Save UPDATE for existing
+          await saveOfflineItem({
+            type: 'activity_objective_update',
+            data: {
+              activity_objective_id: activityObjectiveId,
+              amount: editAmount ? Number(editAmount) : null,
+              timestamp: Date.now()
+            },
+            synced: false,
+            timestamp: Date.now()
+          })
+        } else {
+          // Save INSERT for new
+          await saveOfflineItem({
+            type: 'activity_objective_create',
+            data: {
+              activity_id: activityId,
+              objective_id: originalObj.objective_id,
+              amount: editAmount ? Number(editAmount) : null,
+              timestamp: Date.now()
+            },
+            synced: false,
+            timestamp: Date.now()
+          })
+        }
+
+        // Update local state immediately
+        const updatedObjectives = objectives.map(obj => 
+          obj.activityObjectiveId === activityObjectiveId 
+            ? { ...obj, amount: editAmount ? Number(editAmount) : null }
+            : obj
+        )
+        setObjectives(updatedObjectives)
+        
+        // Store updated objectives offline for persistence
+        await storeOfflineActivityData(activityId, 'objectives', updatedObjectives)
+        
+        alert('Objective saved offline and will sync when online!')
+      }
     } catch (err) {
       console.error('Error saving objective:', err)
       alert('Failed to save objective.')
@@ -159,18 +355,53 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
     }
   
     try {
-      await axios.post('/api/activity_objectives_direct', {
-        activity_id: activityId,
-        title: newObjectiveTitle.trim(),
-        measurement: newObjectiveMeasurement.trim(),
-      })
-  
-      // Refresh
-      const resp = await axios.get(`/api/activity_outcome/${activityId}`)
-      setObjectives(resp.data.objectives || [])
-      setNewObjectiveTitle('')
-      setNewObjectiveMeasurement('')
-      alert('Objective added successfully!')
+      if (navigator.onLine) {
+        await axios.post('/api/activity_objectives_direct', {
+          activity_id: activityId,
+          title: newObjectiveTitle.trim(),
+          measurement: newObjectiveMeasurement.trim(),
+        })
+        
+        // Refresh
+        await loadObjectives()
+        setNewObjectiveTitle('')
+        setNewObjectiveMeasurement('')
+        alert('Objective added successfully!')
+      } else {
+        // Offline mode - save for later sync
+        await saveOfflineItem({
+          type: 'activity_objective_update',
+          data: {
+            activity_id: activityId,
+            title: newObjectiveTitle.trim(),
+            measurement: newObjectiveMeasurement.trim(),
+            is_new: true,
+            timestamp: Date.now()
+          },
+          synced: false,
+          timestamp: Date.now()
+        })
+
+        // Add to local state immediately for display
+        const tempId = Date.now() // Temporary ID for offline
+        const newObjective: IProjectObjective = {
+          activityObjectiveId: tempId,
+          objective_id: tempId,
+          title: newObjectiveTitle.trim(),
+          measurement: newObjectiveMeasurement.trim(),
+          amount: null
+        }
+        
+        const updatedObjectives = [...objectives, newObjective]
+        setObjectives(updatedObjectives)
+        
+        // Store updated objectives offline for persistence
+        await storeOfflineActivityData(activityId, 'objectives', updatedObjectives)
+        
+        setNewObjectiveTitle('')
+        setNewObjectiveMeasurement('')
+        alert('Objective saved offline and will sync when online!')
+      }
     } catch (err) {
       console.error(err)
       alert('Failed to add objective.')
@@ -198,42 +429,113 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
       return
     }
     try {
-      if (!editingPredId) {
-        // POST
-        await axios.post('/api/activity_predator', {
-          activity_id: activityId,
-          predator_id: selectedPredatorId,
-          measurement: pMeasurement,
-          rats,
-          possums,
-          mustelids,
-          hedgehogs,
-          others,
-          othersDescription,
-        })
-        alert('Predator record added successfully!')
-      } else {
-        // PUT
-        await axios.put(`/api/activity_predator/${editingPredId}`, {
-          activity_id: activityId,
-          predator_id: selectedPredatorId,
-          measurement: pMeasurement,
-          rats,
-          possums,
-          mustelids,
-          hedgehogs,
-          others,
-          othersDescription,
-        })
-        alert('Predator record updated successfully!')
-      }
+      if (navigator.onLine) {
+        if (!editingPredId) {
+          // POST
+          await axios.post('/api/activity_predator', {
+            activity_id: activityId,
+            predator_id: selectedPredatorId,
+            measurement: pMeasurement,
+            rats,
+            possums,
+            mustelids,
+            hedgehogs,
+            others,
+            othersDescription,
+          })
+          alert('Predator record added successfully!')
+        } else {
+          // PUT
+          await axios.put(`/api/activity_predator/${editingPredId}`, {
+            activity_id: activityId,
+            predator_id: selectedPredatorId,
+            measurement: pMeasurement,
+            rats,
+            possums,
+            mustelids,
+            hedgehogs,
+            others,
+            othersDescription,
+          })
+          alert('Predator record updated successfully!')
+        }
 
-      // Reload after save
-      const resp = await axios.get<IPredatorRecord[]>(
-        `/api/activity_predator/${activityId}`
-      )
-      setPredatorRecords(resp.data)
-      resetPredatorForm()
+        // Reload after save
+        await loadPredatorRecords()
+        resetPredatorForm()
+      } else {
+        // Offline mode - save for later sync
+        await saveOfflineItem({
+          type: 'activity_predator',
+          data: {
+            activity_id: activityId,
+            predator_id: selectedPredatorId,
+            measurement: pMeasurement,
+            rats,
+            possums,
+            mustelids,
+            hedgehogs,
+            others,
+            othersDescription,
+            is_edit: !!editingPredId,
+            predator_record_id: editingPredId,
+            timestamp: Date.now()
+          },
+          synced: false,
+          timestamp: Date.now()
+        })
+
+        // Update local state immediately for display
+        const predatorSubType = predatorList.find(p => p.id === selectedPredatorId)?.sub_type || 'Unknown'
+        if (!editingPredId) {
+          // Add new record
+          const tempId = Date.now() // Temporary ID for offline
+          const newRecord: IPredatorRecord = {
+            id: tempId,
+            activity_id: activityId,
+            predator_id: selectedPredatorId,
+            sub_type: predatorSubType,
+            measurement: pMeasurement,
+            rats,
+            possums,
+            mustelids,
+            hedgehogs,
+            others,
+            others_description: othersDescription,
+          }
+          
+          const updatedRecords = [...predatorRecords, newRecord]
+          setPredatorRecords(updatedRecords)
+          
+          // Store updated records offline for persistence
+          await storeOfflineActivityData(activityId, 'predator_records', updatedRecords)
+        } else {
+          // Update existing record
+          const updatedRecords = predatorRecords.map(record => 
+            record.id === editingPredId 
+              ? { 
+                  ...record, 
+                  predator_id: selectedPredatorId,
+                  sub_type: predatorSubType,
+                  measurement: pMeasurement,
+                  rats,
+                  possums,
+                  mustelids,
+                  hedgehogs,
+                  others,
+                  others_description: othersDescription,
+                }
+              : record
+          )
+          setPredatorRecords(updatedRecords)
+          
+          // Store updated records offline for persistence
+          await storeOfflineActivityData(activityId, 'predator_records', updatedRecords)
+        }
+
+        alert(!editingPredId ? 'Predator record saved offline and will sync when online!' : 'Predator record updated offline and will sync when online!')
+        resetPredatorForm()
+      }
     } catch (err) {
       console.error('Error saving predator record:', err)
       alert('Failed to save predator record.')
@@ -253,6 +555,11 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
   }
 
   const handleDeletePredator = async (id: number) => {
+    if (!navigator.onLine) {
+      alert('Delete functionality is not available in offline mode. Please try again when online.')
+      return
+    }
+    
     if (!window.confirm('Delete this predator record?')) return
     try {
       await axios.delete(`/api/activity_predator/${id}`)
@@ -284,6 +591,12 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
   return (
     <div>
       <div className="container-fluid px-2 py-2">
+        {isOffline && (
+          <div className="alert alert-warning text-center mb-3" role="alert">
+            <strong>Offline Mode:</strong> You can view historical data and add/edit outcomes offline. Changes will sync when online.
+          </div>
+        )}
+        
         {/* Main Outcome Table (filteredObjectives) */}
         <h4 className="my-4 text-center" style={{ color: '#0094B6' }}>
           Activity Outcome
@@ -574,6 +887,8 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
                               className="btn btn-sm"
                               style={btnKaraka}
                               onClick={() => handleDeletePredator(r.id)}
+                              disabled={isOffline}
+                              title={isOffline ? 'Delete functionality not available offline' : ''}
                             >
                               Delete
                             </button>
@@ -622,6 +937,8 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
                               className="btn btn-sm"
                               style={btnKaraka}
                               onClick={() => handleDeletePredator(r.id)}
+                              disabled={isOffline}
+                              title={isOffline ? 'Delete functionality not available offline' : ''}
                             >
                               Delete
                             </button>
@@ -682,6 +999,8 @@ const [newObjectiveMeasurement, setNewObjectiveMeasurement] = useState('')
                             className="btn btn-sm"
                             style={btnKaraka}
                             onClick={() => handleDeletePredator(r.id)}
+                            disabled={isOffline}
+                            title={isOffline ? 'Delete functionality not available offline' : ''}
                           >
                             Delete
                           </button>

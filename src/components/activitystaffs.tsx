@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
+import { getCachedStaff, saveOfflineItem, storeOfflineActivityData, getOfflineActivityData, cacheActivityAssignments, getCachedActivityAssignments } from '../utils/localDB'
 
 interface Staff {
   id: number
@@ -26,15 +27,51 @@ const ActivityStaffsTab: React.FC<StaffTabProps> = ({ activityId }) => {
   const [selectedTeamLeader, setSelectedTeamLeader] = useState<number | null>(
     null
   )
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Fetch unassigned staff for the activity
   useEffect(() => {
     const fetchUnassignedStaff = async () => {
       try {
-        const res = await axios.get(`/api/unassigned_staff/${activityId}`)
-        setUnassignedStaff(res.data) // Unassigned staff for the dropdown
+        if (navigator.onLine) {
+          const res = await axios.get(`/api/unassigned_staff/${activityId}`)
+          setUnassignedStaff(res.data) // Unassigned staff for the dropdown
+        } else {
+          // In offline mode, get all cached staff and filter out assigned ones
+          const allStaff = await getCachedStaff()
+          const availableStaff = allStaff.filter(staff => 
+            staff.role !== 'Volunteer' && 
+            !activityStaffs.some(assigned => assigned.id === staff.id)
+          )
+          setUnassignedStaff(availableStaff)
+        }
       } catch (err) {
         console.error('Error fetching unassigned staff:', err)
+        // Fallback to cached staff
+        try {
+          const allStaff = await getCachedStaff()
+          const availableStaff = allStaff.filter(staff => 
+            staff.role !== 'Volunteer' && 
+            !activityStaffs.some(assigned => assigned.id === staff.id)
+          )
+          setUnassignedStaff(availableStaff)
+        } catch (cacheErr) {
+          console.error('Error loading cached staff:', cacheErr)
+        }
       }
     }
 
@@ -44,11 +81,58 @@ const ActivityStaffsTab: React.FC<StaffTabProps> = ({ activityId }) => {
   // Fetch staff already assigned to the activity
   useEffect(() => {
     const fetchActivityStaffs = async () => {
+      if (!activityId) return
+      
+      console.log(`🔍 Loading staff for activity ${activityId}, online: ${navigator.onLine}`)
+      
       try {
-        const res = await axios.get(`/api/activity_staff/${activityId}`)
-        setActivityStaffs(res.data) // Staff assigned to the activity
+        let assignedStaff: Staff[] = []
+        
+        if (navigator.onLine) {
+          // Online: get from server
+          try {
+            const res = await axios.get(`/api/activity_staff/${activityId}`)
+            assignedStaff = res.data
+            console.log(`✅ Loaded ${assignedStaff.length} staff from server`)
+            
+            // Cache server data for offline viewing
+            await cacheActivityAssignments(activityId, 'staff', assignedStaff)
+            console.log(`💾 Cached ${assignedStaff.length} staff for offline viewing`)
+          } catch (err) {
+            console.log('❌ Server request failed, trying cached data:', err)
+            // If server fails, try cached historical data
+            assignedStaff = await getCachedActivityAssignments(activityId, 'staff')
+            console.log(`📚 Loaded ${assignedStaff.length} staff from cache`)
+          }
+        } else {
+          // Offline: load cached historical data first
+          assignedStaff = await getCachedActivityAssignments(activityId, 'staff')
+          console.log(`📚 Offline: Loaded ${assignedStaff.length} historical staff from cache`)
+        }
+        
+        // Always load offline assignments and merge them
+        const offlineAssignments: Staff[] = await getOfflineActivityData(activityId, 'staff')
+        console.log(`📦 Found ${offlineAssignments.length} offline staff assignments`)
+        
+        // Merge cached/server and offline data (avoid duplicates)
+        const allAssignedIds = new Set(assignedStaff.map(s => s.id))
+        const offlineOnlyStaff = offlineAssignments.filter((s: Staff) => !allAssignedIds.has(s.id))
+        
+        const finalAssignments = [...assignedStaff, ...offlineOnlyStaff]
+        console.log(`📊 Total staff assignments: ${finalAssignments.length} (${assignedStaff.length} historical + ${offlineOnlyStaff.length} offline-only)`)
+        setActivityStaffs(finalAssignments)
+        
       } catch (err) {
-        console.error('Error fetching activity staffs:', err)
+        console.error('❌ Error fetching activity staffs:', err)
+        // Final fallback to only offline data
+        try {
+          const offlineAssignments: Staff[] = await getOfflineActivityData(activityId, 'staff')
+          console.log(`🔄 Final fallback: Using ${offlineAssignments.length} offline staff assignments`)
+          setActivityStaffs(offlineAssignments)
+        } catch (offlineErr) {
+          console.error('❌ Error loading offline staff assignments:', offlineErr)
+          setActivityStaffs([])
+        }
       }
     }
 
@@ -60,17 +144,45 @@ const ActivityStaffsTab: React.FC<StaffTabProps> = ({ activityId }) => {
     if (!staffId) return
 
     try {
-      await axios.post('/api/activity_staff', {
-        activity_id: activityId,
-        staff_id: staffId,
-      })
-      // Refresh the activity staff list
-      const res = await axios.get(`/api/activity_staff/${activityId}`)
-      setActivityStaffs(res.data)
-      // Reset dropdowns
-      // setSelectedGroupAdmin(null)
-      setSelectedFieldStaff(null)
-      setSelectedTeamLeader(null)
+      if (navigator.onLine) {
+        await axios.post('/api/activity_staff', {
+          activity_id: activityId,
+          staff_id: staffId,
+        })
+        // Refresh the activity staff list
+        const res = await axios.get(`/api/activity_staff/${activityId}`)
+        setActivityStaffs(res.data)
+        // Reset dropdowns
+        setSelectedFieldStaff(null)
+        setSelectedTeamLeader(null)
+      } else {
+        // Queue for offline sync
+        await saveOfflineItem({
+          type: 'activity_staff_assignment',
+          data: {
+            activity_id: activityId,
+            staff_id: staffId,
+          },
+          synced: false,
+          timestamp: Date.now(),
+        })
+
+        // Update local state immediately to show the addition
+        const staffToAdd = unassignedStaff.find(s => s.id === staffId)
+        if (staffToAdd) {
+          setActivityStaffs(prev => [...prev, staffToAdd])
+          
+          // Store offline assignments for persistence
+          await storeOfflineActivityData(activityId!, 'staff', [...activityStaffs, staffToAdd])
+          
+          // Remove from unassigned list
+          setUnassignedStaff(prev => prev.filter(s => s.id !== staffId))
+        }
+
+        alert('Staff assignment saved offline and will sync when online!')
+        setSelectedFieldStaff(null)
+        setSelectedTeamLeader(null)
+      }
     } catch (err) {
       console.error('Error assigning staff to activity:', err)
     }
@@ -78,6 +190,11 @@ const ActivityStaffsTab: React.FC<StaffTabProps> = ({ activityId }) => {
 
   // Remove staff from the activity
   const handleRemoveStaff = async (id: number) => {
+    if (!navigator.onLine) {
+      alert('Remove functionality is not available offline. Please try again when online.')
+      return
+    }
+
     const staffToRemove = activityStaffs.find((staff) => staff.id === id)
     if (!staffToRemove) return
 
@@ -206,6 +323,8 @@ const ActivityStaffsTab: React.FC<StaffTabProps> = ({ activityId }) => {
                   className="btn btn-danger btn-sm rounded"
                   style={{ backgroundColor: '#D37B40' }}
                   onClick={() => handleRemoveStaff(staff.id)}
+                  disabled={isOffline}
+                  title={isOffline ? 'Remove functionality not available offline' : ''}
                 >
                   Remove
                 </button>

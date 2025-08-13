@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
+import { getCachedVolunteers, saveOfflineItem, storeOfflineActivityData, getOfflineActivityData, cacheActivityAssignments, getCachedActivityAssignments } from '../utils/localDB'
 
 interface Volunteer {
   id: number
@@ -22,6 +23,21 @@ const ActivityVolunteerTab: React.FC<VolunteerTabProps> = ({ activityId }) => {
   const [activityVolunteers, setActivityVolunteers] = useState<Volunteer[]>([])
   const [selectedVolunteers, setSelectedVolunteers] = useState<number[]>([])
   const [, setProjectName] = useState<string>('') // Store project name
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Fetch the project name for the activity
   useEffect(() => {
@@ -41,24 +57,92 @@ const ActivityVolunteerTab: React.FC<VolunteerTabProps> = ({ activityId }) => {
   useEffect(() => {
     const fetchUnassignedVolunteers = async () => {
       try {
-        const res = await axios.get(`/api/unassigned_volunteer/${activityId}`)
-        setUnassignedVolunteers(res.data)
+        if (navigator.onLine) {
+          const res = await axios.get(`/api/unassigned_volunteer/${activityId}`)
+          setUnassignedVolunteers(res.data)
+        } else {
+          // In offline mode, get all cached volunteers and filter out assigned ones
+          const allVolunteers = await getCachedVolunteers()
+          const availableVolunteers = allVolunteers.filter(volunteer => 
+            volunteer.role === 'Volunteer' && 
+            !activityVolunteers.some(assigned => assigned.id === volunteer.id)
+          )
+          setUnassignedVolunteers(availableVolunteers)
+        }
       } catch (err) {
         console.error('Error fetching unassigned volunteers:', err)
+        // Fallback to cached volunteers
+        try {
+          const allVolunteers = await getCachedVolunteers()
+          const availableVolunteers = allVolunteers.filter(volunteer => 
+            volunteer.role === 'Volunteer' && 
+            !activityVolunteers.some(assigned => assigned.id === volunteer.id)
+          )
+          setUnassignedVolunteers(availableVolunteers)
+        } catch (cacheErr) {
+          console.error('Error loading cached volunteers:', cacheErr)
+        }
       }
     }
 
     fetchUnassignedVolunteers()
-  }, [activityId, activityVolunteers])
+  }, [activityId, activityVolunteers]) // Re-fetch unassigned volunteers whenever activityVolunteers change
 
   // Fetch volunteers already assigned to the activity
   useEffect(() => {
     const fetchActivityVolunteers = async () => {
+      if (!activityId) return
+      
+      console.log(`🔍 Loading volunteers for activity ${activityId}, online: ${navigator.onLine}`)
+      
       try {
-        const res = await axios.get(`/api/activity_volunteer/${activityId}`)
-        setActivityVolunteers(res.data)
+        let assignedVolunteers: Volunteer[] = []
+        
+        if (navigator.onLine) {
+          // Online: get from server
+          try {
+            const res = await axios.get(`/api/activity_volunteer/${activityId}`)
+            assignedVolunteers = res.data
+            console.log(`✅ Loaded ${assignedVolunteers.length} volunteers from server`)
+            
+            // Cache server data for offline viewing
+            await cacheActivityAssignments(activityId, 'volunteers', assignedVolunteers)
+            console.log(`💾 Cached ${assignedVolunteers.length} volunteers for offline viewing`)
+          } catch (err) {
+            console.log('❌ Server request failed, trying cached data:', err)
+            // If server fails, try cached historical data
+            assignedVolunteers = await getCachedActivityAssignments(activityId, 'volunteers')
+            console.log(`📚 Loaded ${assignedVolunteers.length} volunteers from cache`)
+          }
+        } else {
+          // Offline: load cached historical data first
+          assignedVolunteers = await getCachedActivityAssignments(activityId, 'volunteers')
+          console.log(`📚 Offline: Loaded ${assignedVolunteers.length} historical volunteers from cache`)
+        }
+        
+        // Always load offline assignments and merge them
+        const offlineAssignments: Volunteer[] = await getOfflineActivityData(activityId, 'volunteers')
+        console.log(`📦 Found ${offlineAssignments.length} offline volunteer assignments`)
+        
+        // Merge cached/server and offline data (avoid duplicates)
+        const allAssignedIds = new Set(assignedVolunteers.map(v => v.id))
+        const offlineOnlyVolunteers = offlineAssignments.filter((v: Volunteer) => !allAssignedIds.has(v.id))
+        
+        const finalAssignments = [...assignedVolunteers, ...offlineOnlyVolunteers]
+        console.log(`📊 Total volunteer assignments: ${finalAssignments.length} (${assignedVolunteers.length} historical + ${offlineOnlyVolunteers.length} offline-only)`)
+        setActivityVolunteers(finalAssignments)
+        
       } catch (err) {
-        console.error('Error fetching activity volunteers:', err)
+        console.error('❌ Error fetching activity volunteers:', err)
+        // Final fallback to only offline data
+        try {
+          const offlineAssignments = await getOfflineActivityData(activityId, 'volunteers')
+          console.log(`🔄 Final fallback: Using ${offlineAssignments.length} offline volunteer assignments`)
+          setActivityVolunteers(offlineAssignments)
+        } catch (offlineErr) {
+          console.error('❌ Error loading offline volunteer assignments:', offlineErr)
+          setActivityVolunteers([])
+        }
       }
     }
 
@@ -70,15 +154,45 @@ const ActivityVolunteerTab: React.FC<VolunteerTabProps> = ({ activityId }) => {
     if (selectedVolunteers.length === 0) return
 
     try {
-      await axios.post('/api/activity_volunteer', {
-        activity_id: activityId,
-        volunteer_ids: selectedVolunteers,
-      })
+      if (navigator.onLine) {
+        await axios.post('/api/activity_volunteer', {
+          activity_id: activityId,
+          volunteer_ids: selectedVolunteers,
+        })
 
-      // Refresh the list of assigned volunteers
-      const res = await axios.get(`/api/activity_volunteer/${activityId}`)
-      setActivityVolunteers(res.data)
-      setSelectedVolunteers([])
+        // Refresh the list of assigned volunteers
+        const res = await axios.get(`/api/activity_volunteer/${activityId}`)
+        setActivityVolunteers(res.data)
+        setSelectedVolunteers([])
+      } else {
+        // Queue for offline sync
+        await saveOfflineItem({
+          type: 'activity_volunteer_assignment',
+          data: {
+            activity_id: activityId,
+            volunteer_ids: selectedVolunteers,
+          },
+          synced: false,
+          timestamp: Date.now(),
+        })
+
+        // Update local state immediately to show the additions
+        const volunteersToAdd = unassignedVolunteers.filter(v => 
+          selectedVolunteers.includes(v.id)
+        )
+        setActivityVolunteers(prev => [...prev, ...volunteersToAdd])
+        
+        // Store offline assignments for persistence
+        await storeOfflineActivityData(activityId, 'volunteers', [...activityVolunteers, ...volunteersToAdd])
+        
+        // Remove from unassigned list
+        setUnassignedVolunteers(prev => 
+          prev.filter(v => !selectedVolunteers.includes(v.id))
+        )
+
+        alert('Volunteer assignments saved offline and will sync when online!')
+        setSelectedVolunteers([])
+      }
     } catch (err) {
       console.error('Error assigning volunteers to activity:', err)
     }
@@ -86,6 +200,11 @@ const ActivityVolunteerTab: React.FC<VolunteerTabProps> = ({ activityId }) => {
 
   // Remove a volunteer from the activity
   const handleRemoveVolunteer = async (id: number) => {
+    if (!navigator.onLine) {
+      alert('Remove functionality is not available offline. Please try again when online.')
+      return
+    }
+
     const volunteerToRemove = activityVolunteers.find((v) => v.id === id)
     if (!volunteerToRemove) return
 
@@ -174,6 +293,8 @@ const ActivityVolunteerTab: React.FC<VolunteerTabProps> = ({ activityId }) => {
                     className="btn btn-danger btn-sm rounded"
                     style={{ backgroundColor: '#D37B40' }}
                     onClick={() => handleRemoveVolunteer(volunteer.id)}
+                    disabled={isOffline}
+                    title={isOffline ? 'Remove functionality not available offline' : ''}
                   >
                     Remove
                   </button>

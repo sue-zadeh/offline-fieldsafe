@@ -11,6 +11,19 @@ import {
   ButtonGroup,
 } from 'react-bootstrap'
 import axios from 'axios'
+import { 
+  cacheRisks, 
+  getCachedRisks, 
+  cacheHazards, 
+  getCachedHazards,
+  saveOfflineItem,
+  storeOfflineActivityData,
+  getOfflineActivityData,
+  cacheActivityAssignments,
+  getCachedActivityAssignments,
+  cacheRiskControlsForTitle,
+  getCachedRiskControlsForTitle
+} from '../utils/localDB'
 
 // -------------------------------------------
 // Inline <style> to get rid of bootstrap style for tab color
@@ -77,6 +90,21 @@ interface OptionType {
 
 const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   const [message, setMessage] = useState<string | null>(null)
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // ---------- RISK DATA ----------
   const [allRiskTitles, setAllRiskTitles] = useState<RiskTitle[]>([])
@@ -121,34 +149,113 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
 
   // On mount, load everything
   useEffect(() => {
-    loadAllRiskTitles()
+    loadAllRiskTitles() // This will now also preload risk controls
     loadActivityRisks()
     loadDetailedRiskControls()
     loadAllHazards()
     loadActivityHazards()
   }, [activityId])
 
+  // Debug effect to monitor siteHazards state changes
+  useEffect(() => {
+    console.log(`🔎 siteHazards state changed: ${siteHazards.length} items`, siteHazards.map(h => h.hazard_description))
+  }, [siteHazards])
+
+  useEffect(() => {
+    console.log(`🔎 activityHazards state changed: ${activityHazards.length} items`, activityHazards.map(h => h.hazard_description))
+  }, [activityHazards])
+
   // risk titles
   async function loadAllRiskTitles() {
     try {
-      const res = await axios.get('/api/risks')
-      setAllRiskTitles(res.data)
+      if (navigator.onLine) {
+        const res = await axios.get('/api/risks')
+        setAllRiskTitles(res.data)
+        await cacheRisks(res.data)
+        
+        // After loading risk titles, preload their controls
+        await preloadRiskControlsForTitles(res.data)
+      } else {
+        const cached = await getCachedRisks()
+        setAllRiskTitles(cached)
+        if (cached.length === 0) {
+          setMessage('No risk titles available offline. Please connect to load data.')
+        }
+      }
     } catch (err) {
       console.error(err)
-      setMessage('Failed to load risk titles.')
+      // Try cached data on error
+      try {
+        const cached = await getCachedRisks()
+        setAllRiskTitles(cached)
+        if (cached.length === 0) {
+          setMessage('Failed to load risk titles and no cached data available.')
+        }
+      } catch (cacheErr) {
+        setMessage('Failed to load risk titles.')
+      }
     }
   }
 
   // activity_risks bridging
   async function loadActivityRisks() {
     try {
-      const res = await axios.get(
-        `/api/activity_risks?activityId=${activityId}`
-      )
-      setActivityRisks(res.data)
+      let onlineRisks: RiskRow[] = []
+      
+      if (navigator.onLine) {
+        try {
+          const res = await axios.get(
+            `/api/activity_risks?activityId=${activityId}`
+          )
+          onlineRisks = res.data
+          console.log(`✅ Loaded ${onlineRisks.length} risks from server`)
+          
+          // Cache server data for offline viewing
+          await cacheActivityAssignments(activityId, 'risks', onlineRisks)
+          console.log(`💾 Cached ${onlineRisks.length} risks for offline viewing`)
+        } catch (err) {
+          console.log('❌ Server request failed, trying cached data:', err)
+          // If server fails, try cached historical data
+          onlineRisks = await getCachedActivityAssignments(activityId, 'risks')
+          console.log(`📚 Loaded ${onlineRisks.length} risks from cache`)
+        }
+      } else {
+        // Offline: load cached historical data first
+        onlineRisks = await getCachedActivityAssignments(activityId, 'risks')
+        console.log(`📚 Offline: Loaded ${onlineRisks.length} historical risks from cache`)
+      }
+      
+      // Always try to load offline risks and merge them
+      const offlineRisks: RiskRow[] = await getOfflineActivityData(activityId, 'risks')
+      console.log(`📦 Found ${offlineRisks.length} offline risk assignments`)
+      
+      // Merge cached/server and offline data (avoid duplicates)
+      const allRiskIds = new Set(onlineRisks.map(r => r.riskId))
+      const offlineOnlyRisks = offlineRisks.filter((r: RiskRow) => !allRiskIds.has(r.riskId))
+      
+      const allRisks = [...onlineRisks, ...offlineOnlyRisks]
+      console.log(`📊 Total risk assignments: ${allRisks.length} (${onlineRisks.length} historical + ${offlineOnlyRisks.length} offline-only)`)
+      setActivityRisks(allRisks)
+      
+      if (allRisks.length === 0 && !navigator.onLine) {
+        setMessage('No activity risks found. Add risks which will sync when online.')
+      }
     } catch (err) {
-      console.error(err)
+      console.error('❌ Error fetching activity risks:', err)
       setMessage('Failed to load activity risks.')
+      
+      // Final fallback to only offline data
+      try {
+        const offlineRisks: RiskRow[] = await getOfflineActivityData(activityId, 'risks')
+        console.log(`🔄 Final fallback: Using ${offlineRisks.length} offline risks`)
+        setActivityRisks(offlineRisks)
+        if (offlineRisks.length > 0) {
+          setMessage('Showing offline risks only. Connect to internet for full data.')
+        }
+      } catch (offlineErr) {
+        console.error('❌ Error loading offline risks fallback:', offlineErr)
+        setActivityRisks([])
+      }
     }
   }
 
@@ -164,34 +271,225 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
     }
   }
 
+  // Preload all risk controls for offline use
+  async function preloadRiskControlsForTitles(riskTitles: any[]) {
+    console.log(`🎯 Preloading risk controls for ${riskTitles.length} risk titles...`)
+    
+    try {
+      if (navigator.onLine) {
+        // Load all unique risk controls by fetching controls for each risk title
+        for (const riskTitle of riskTitles) {
+          try {
+            const res = await axios.get(`/api/risks/${riskTitle.id}/controls`)
+            await cacheRiskControlsForTitle(riskTitle.id, res.data)
+            console.log(`💾 Cached ${res.data.length} controls for "${riskTitle.risk_title}"`)
+            
+            // Small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 100))
+          } catch (err) {
+            console.log(`⚠️ Failed to preload controls for risk title ${riskTitle.id}:`, err)
+          }
+        }
+        console.log('✅ Finished preloading risk controls')
+      } else {
+        console.log('📱 Offline mode - skipping risk controls preload')
+      }
+    } catch (err) {
+      console.log('❌ Error during risk controls preload:', err)
+    }
+  }
+
   // hazards
   async function loadAllHazards() {
+    console.log(`🔍 Loading hazards, online: ${navigator.onLine}`)
+    
     try {
-      const siteRes = await axios.get('/api/site_hazards')
-      setSiteHazards(siteRes.data)
+      let siteHazardsData: Hazard[] = []
+      let activityHazardsData: Hazard[] = []
+      
+      if (navigator.onLine) {
+        try {
+          const [siteRes, actRes] = await Promise.all([
+            axios.get('/api/site_hazards'),
+            axios.get('/api/activity_people_hazards')
+          ])
+          
+          siteHazardsData = siteRes.data
+          activityHazardsData = actRes.data
+          console.log(`✅ Loaded ${siteHazardsData.length} site hazards, ${activityHazardsData.length} activity hazards from server`)
 
-      const actRes = await axios.get('/api/activity_people_hazards')
-      setActivityHazards(actRes.data)
+          // Cache hazards for offline use with type markers
+          const allHazards = [
+            ...siteHazardsData.map(h => ({ ...h, type: 'site' })),
+            ...activityHazardsData.map(h => ({ ...h, type: 'activity' }))
+          ]
+          await cacheHazards(allHazards)
+          console.log(`💾 Cached ${allHazards.length} hazards for offline viewing`)
+        } catch (err) {
+          console.log('❌ Server request failed, trying cached data:', err)
+          const cached = await getCachedHazards()
+          
+          // Smart filtering based on known hazard patterns from database
+          const siteHazardKeywords = ['Slippery', 'Weather', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
+          const activityHazardKeywords = ['Fatigue', 'Training', 'Lifting', 'Physical', 'Human', 'Personnel']
+          
+          siteHazardsData = cached.filter(h => {
+            // If it has explicit type, use it
+            if (h.type === 'site') return true
+            if (h.type === 'activity') return false
+            
+            // Otherwise, check the description for keywords
+            const desc = h.hazard_description || ''
+            const isSite = siteHazardKeywords.some(keyword => desc.includes(keyword))
+            const isActivity = activityHazardKeywords.some(keyword => desc.includes(keyword))
+            
+            // Default to site if not clearly activity
+            return !isActivity || isSite
+          })
+          
+          activityHazardsData = cached.filter(h => {
+            // If it has explicit type, use it
+            if (h.type === 'activity') return true
+            if (h.type === 'site') return false
+            
+            // Otherwise, check the description for keywords
+            const desc = h.hazard_description || ''
+            return activityHazardKeywords.some(keyword => desc.includes(keyword))
+          })
+          
+          console.log(`📚 Smart-filtered: ${siteHazardsData.length} site + ${activityHazardsData.length} activity hazards from cache`)
+        }
+      } else {
+        console.log('📱 Offline mode - loading from cache...')
+        const cached = await getCachedHazards()
+        
+        // Use the same smart filtering logic for offline mode
+        const siteHazardKeywords = ['Slippery', 'Weather', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
+        const activityHazardKeywords = ['Fatigue', 'Training', 'Lifting', 'Physical', 'Human', 'Personnel']
+        
+        siteHazardsData = cached.filter(h => {
+          // If it has explicit type, use it
+          if (h.type === 'site') return true
+          if (h.type === 'activity') return false
+          
+          // Otherwise, check the description for keywords
+          const desc = h.hazard_description || ''
+          const isSite = siteHazardKeywords.some(keyword => desc.includes(keyword))
+          const isActivity = activityHazardKeywords.some(keyword => desc.includes(keyword))
+          
+          // Default to site if not clearly activity
+          return !isActivity || isSite
+        })
+        
+        activityHazardsData = cached.filter(h => {
+          // If it has explicit type, use it
+          if (h.type === 'activity') return true
+          if (h.type === 'site') return false
+          
+          // Otherwise, check the description for keywords
+          const desc = h.hazard_description || ''
+          return activityHazardKeywords.some(keyword => desc.includes(keyword))
+        })
+        
+        console.log(`📚 Offline smart-filtered: ${siteHazardsData.length} site + ${activityHazardsData.length} activity hazards from cache`)
+        
+        if (cached.length === 0) {
+          setMessage('No hazard definitions available offline.')
+        }
+      }
+      
+      setSiteHazards(siteHazardsData)
+      setActivityHazards(activityHazardsData)
+      
+      console.log(`🎯 Final state set - Site hazards:`, siteHazardsData.map(h => h.hazard_description))
+      console.log(`🎯 Final state set - Activity hazards:`, activityHazardsData.map(h => h.hazard_description))
+      
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to load hazard definitions.')
+      console.error('❌ Error loading hazards:', err)
+      try {
+        const cached = await getCachedHazards()
+        setSiteHazards(cached.filter(h => h.type === 'site' || !h.type))
+        setActivityHazards(cached.filter(h => h.type === 'activity'))
+        console.log(`🔄 Fallback: Using ${cached.length} cached hazards`)
+      } catch (cacheErr) {
+        console.error('❌ Error loading cached hazards:', cacheErr)
+        setMessage('Failed to load hazard definitions.')
+      }
     }
   }
 
   async function loadActivityHazards() {
     try {
-      const shRes = await axios.get(
-        `/api/activity_site_hazards?activityId=${activityId}`
-      )
-      setActivitySiteHazards(shRes.data)
+      let siteHazards: any[] = []
+      let peopleHazards: any[] = []
+      
+      if (navigator.onLine) {
+        // Online: get from server
+        try {
+          const shRes = await axios.get(
+            `/api/activity_site_hazards?activityId=${activityId}`
+          )
+          siteHazards = shRes.data
+          console.log(`✅ Loaded ${siteHazards.length} site hazards from server`)
 
-      const ahRes = await axios.get(
-        `/api/activity_activity_people_hazards?activityId=${activityId}`
-      )
-      setActivityPeopleHazards(ahRes.data)
+          const ahRes = await axios.get(
+            `/api/activity_activity_people_hazards?activityId=${activityId}`
+          )
+          peopleHazards = ahRes.data
+          console.log(`✅ Loaded ${peopleHazards.length} people hazards from server`)
+          
+          // Cache server data for offline viewing
+          await cacheActivityAssignments(activityId, 'site_hazards', siteHazards)
+          await cacheActivityAssignments(activityId, 'people_hazards', peopleHazards)
+          console.log(`💾 Cached hazards for offline viewing`)
+        } catch (err) {
+          console.log('❌ Server request failed, trying cached data:', err)
+          // If server fails, try cached historical data
+          siteHazards = await getCachedActivityAssignments(activityId, 'site_hazards')
+          peopleHazards = await getCachedActivityAssignments(activityId, 'people_hazards')
+          console.log(`📚 Loaded ${siteHazards.length} site + ${peopleHazards.length} people hazards from cache`)
+        }
+      } else {
+        // Offline: load cached historical data first
+        siteHazards = await getCachedActivityAssignments(activityId, 'site_hazards')
+        peopleHazards = await getCachedActivityAssignments(activityId, 'people_hazards')
+        console.log(`📚 Offline: Loaded ${siteHazards.length} site + ${peopleHazards.length} people hazards from cache`)
+      }
+      
+      // Always load offline hazards and merge them
+      const offlineSiteHazards = await getOfflineActivityData(activityId, 'site_hazards')
+      const offlinePeopleHazards = await getOfflineActivityData(activityId, 'people_hazards')
+      console.log(`📦 Found ${offlineSiteHazards.length} offline site + ${offlinePeopleHazards.length} offline people hazards`)
+      
+      // Merge cached/server and offline data (avoid duplicates)
+      const allSiteIds = new Set(siteHazards.map(h => h.id))
+      const allPeopleIds = new Set(peopleHazards.map(h => h.id))
+      
+      const offlineOnlySiteHazards = offlineSiteHazards.filter((h: any) => !allSiteIds.has(h.id))
+      const offlineOnlyPeopleHazards = offlinePeopleHazards.filter((h: any) => !allPeopleIds.has(h.id))
+      
+      const finalSiteHazards = [...siteHazards, ...offlineOnlySiteHazards]
+      const finalPeopleHazards = [...peopleHazards, ...offlineOnlyPeopleHazards]
+      
+      console.log(`📊 Total hazards: ${finalSiteHazards.length} site (${siteHazards.length} historical + ${offlineOnlySiteHazards.length} offline-only)`)
+      console.log(`📊 Total hazards: ${finalPeopleHazards.length} people (${peopleHazards.length} historical + ${offlineOnlyPeopleHazards.length} offline-only)`)
+      
+      setActivitySiteHazards(finalSiteHazards)
+      setActivityPeopleHazards(finalPeopleHazards)
+      
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to load hazards for this activity.')
+      console.error('❌ Error loading activity hazards:', err)
+      // Final fallback to only offline data
+      try {
+        const offlineSiteHazards = await getOfflineActivityData(activityId, 'site_hazards')
+        const offlinePeopleHazards = await getOfflineActivityData(activityId, 'people_hazards')
+        console.log(`🔄 Final fallback: Using ${offlineSiteHazards.length} offline site + ${offlinePeopleHazards.length} offline people hazards`)
+        setActivitySiteHazards(offlineSiteHazards)
+        setActivityPeopleHazards(offlinePeopleHazards)
+      } catch (offlineErr) {
+        console.error('❌ Error loading offline hazards:', offlineErr)
+        setMessage('Failed to load hazards for this activity.')
+      }
     }
   }
 
@@ -252,14 +550,32 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   }
 
   async function handlePickRiskTitle(riskTitleId: number) {
+    console.log(`🎯 Loading risk controls for risk title ${riskTitleId}...`)
     setSelectedRiskTitleId(riskTitleId)
+    
     try {
       const res = await axios.get(`/api/risks/${riskTitleId}/controls`)
+      console.log(`✅ Loaded ${res.data.length} risk controls from server`)
       setRiskControlsForTitle(res.data)
       setChosenControlIds([])
+      
+      // Cache the controls for offline use
+      await cacheRiskControlsForTitle(riskTitleId, res.data)
+      console.log(`💾 Cached risk controls for title ${riskTitleId}`)
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to load risk controls for chosen title.')
+      console.log(`❌ Server request failed, trying cached controls for title ${riskTitleId}:`, err)
+      
+      // Try to get cached controls for this specific risk title
+      const cachedControls = await getCachedRiskControlsForTitle(riskTitleId)
+      if (cachedControls.length > 0) {
+        console.log(`📚 Found ${cachedControls.length} cached controls for risk title ${riskTitleId}`)
+        setRiskControlsForTitle(cachedControls)
+        setChosenControlIds([])
+      } else {
+        console.log(`⚠️ No cached controls found for risk title ${riskTitleId}`)
+        setRiskControlsForTitle([])
+        setMessage('Failed to load risk controls. Please try again when online.')
+      }
     }
   }
 
@@ -273,17 +589,41 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
 
   async function handleAddNewControl() {
     if (!selectedRiskTitleId || !newControlText.trim()) return
+    console.log(`➕ Adding new risk control for title ${selectedRiskTitleId}: "${newControlText.trim()}"`)
+    
     try {
       await axios.post(`/api/risks/${selectedRiskTitleId}/controls`, {
         control_text: newControlText.trim(),
       })
       setNewControlText('')
+      console.log(`✅ Added new control successfully`)
+      
       // Re-fetch the list
       const res = await axios.get(`/api/risks/${selectedRiskTitleId}/controls`)
       setRiskControlsForTitle(res.data)
+      
+      // Update cache
+      await cacheRiskControlsForTitle(selectedRiskTitleId, res.data)
+      console.log(`💾 Updated cached risk controls for title ${selectedRiskTitleId}`)
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to add new control.')
+      console.log(`❌ Failed to add new control (offline mode):`, err)
+      
+      // In offline mode, add to local list temporarily
+      const newControl = {
+        id: Date.now(), // Temporary ID
+        control_text: newControlText.trim(),
+        risk_title_id: selectedRiskTitleId,
+        temp: true // Mark as temporary
+      }
+      
+      const updatedControls = [...riskControlsForTitle, newControl]
+      setRiskControlsForTitle(updatedControls)
+      setNewControlText('')
+      
+      // Cache the updated list
+      await cacheRiskControlsForTitle(selectedRiskTitleId, updatedControls)
+      console.log(`📝 Added control locally (offline), will sync when online`)
+      setMessage('Control added locally. Will sync when online.')
     }
   }
 
@@ -351,32 +691,75 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
     try {
       if (!isEditing) {
         // -------- ADD MODE --------
-        const createRes = await axios.post('/api/risks-create-row', {
-          risk_title_id: selectedRiskTitleId,
-          likelihood,
-          consequences,
-        })
-        const newRiskId = createRes.data.riskId
+        if (navigator.onLine) {
+          const createRes = await axios.post('/api/risks-create-row', {
+            risk_title_id: selectedRiskTitleId,
+            likelihood,
+            consequences,
+          })
+          const newRiskId = createRes.data.riskId
 
-        // Link risk to activity
-        await axios.post('/api/activity_risks', {
-          activity_id: activityId,
-          risk_id: newRiskId,
-        })
-
-        // Link chosen controls
-        for (const cid of chosenControlIds) {
-          await axios.post('/api/activity_risk_controls', {
+          // Link risk to activity
+          await axios.post('/api/activity_risks', {
             activity_id: activityId,
             risk_id: newRiskId,
-            risk_control_id: cid,
-            is_checked: true,
           })
-        }
 
-        setMessage('Activity risk added successfully.')
+          // Link chosen controls
+          for (const cid of chosenControlIds) {
+            await axios.post('/api/activity_risk_controls', {
+              activity_id: activityId,
+              risk_id: newRiskId,
+              risk_control_id: cid,
+              is_checked: true,
+            })
+          }
+
+          setMessage('Activity risk added successfully.')
+        } else {
+          // Offline mode - save for later sync
+          await saveOfflineItem({
+            type: 'activity_risk',
+            data: {
+              activity_id: activityId,
+              risk_title_id: selectedRiskTitleId,
+              likelihood,
+              consequences,
+              chosen_control_ids: chosenControlIds,
+              timestamp: Date.now()
+            },
+            synced: false,
+            timestamp: Date.now()
+          })
+
+          // Add to local state immediately for display
+          const riskTitle = allRiskTitles.find(r => r.id === selectedRiskTitleId)
+          if (riskTitle) {
+            const tempId = Date.now() // Temporary ID for offline
+            const newRisk: RiskRow = {
+              activityRiskId: tempId,
+              riskId: tempId,
+              riskTitleId: selectedRiskTitleId,
+              risk_title_label: riskTitle.title,
+              likelihood: likelihood,
+              consequences: consequences,
+              risk_rating: 'Pending', // Will be calculated when synced
+            }
+            setActivityRisks(prev => [...prev, newRisk])
+            
+            // Store offline risks for persistence
+            await storeOfflineActivityData(activityId, 'risks', [...activityRisks, newRisk])
+          }
+
+          setMessage('Risk saved offline and will sync when online.')
+        }
       } else {
         // -------- EDIT MODE --------
+        if (!navigator.onLine) {
+          setMessage('Editing risks is not available in offline mode.')
+          return
+        }
+
         if (!editingRisk) return
 
         // get the new text for the risk_title
@@ -413,6 +796,11 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   // REMOVE RISK
   // =========================
   async function handleRemoveRisk(r: RiskRow) {
+    if (!navigator.onLine) {
+      setMessage('Remove functionality is not available in offline mode.')
+      return
+    }
+    
     if (!window.confirm(`Remove risk "${r.risk_title_label}"?`)) return
     try {
       await axios.delete(
@@ -448,22 +836,57 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
 
   async function handleSaveHazards() {
     try {
-      if (hazardTab === 'site') {
-        for (const hid of selectedHazardIds) {
-          await axios.post('/api/activity_site_hazards', {
-            activity_id: activityId,
-            site_hazard_id: hid,
-          })
+      if (navigator.onLine) {
+        if (hazardTab === 'site') {
+          for (const hid of selectedHazardIds) {
+            await axios.post('/api/activity_site_hazards', {
+              activity_id: activityId,
+              site_hazard_id: hid,
+            })
+          }
+        } else {
+          for (const hid of selectedHazardIds) {
+            await axios.post('/api/activity_activity_people_hazards', {
+              activity_id: activityId,
+              activity_people_hazard_id: hid,
+            })
+          }
         }
+        setMessage('Hazards added successfully.')
       } else {
+        // Offline mode - save for later sync
+        const selectedHazards = hazardTab === 'site' ? siteHazards : activityHazards
         for (const hid of selectedHazardIds) {
-          await axios.post('/api/activity_activity_people_hazards', {
-            activity_id: activityId,
-            activity_people_hazard_id: hid,
+          await saveOfflineItem({
+            type: 'activity_hazard',
+            data: {
+              activity_id: activityId,
+              hazard_id: hid,
+              hazard_type: hazardTab,
+              timestamp: Date.now()
+            },
+            synced: false,
+            timestamp: Date.now()
           })
         }
+
+        // Add to local state immediately for display
+        const newHazards = selectedHazards.filter(h => selectedHazardIds.includes(h.id))
+        if (hazardTab === 'site') {
+          const updatedSiteHazards = [...activitySiteHazards, ...newHazards]
+          setActivitySiteHazards(updatedSiteHazards)
+          // Store offline site hazards for persistence
+          await storeOfflineActivityData(activityId, 'site_hazards', updatedSiteHazards)
+        } else {
+          const updatedPeopleHazards = [...activityPeopleHazards, ...newHazards]
+          setActivityPeopleHazards(updatedPeopleHazards)
+          // Store offline people hazards for persistence
+          await storeOfflineActivityData(activityId, 'people_hazards', updatedPeopleHazards)
+        }
+
+        setMessage('Hazards saved offline and will sync when online.')
       }
-      setMessage('Hazards added successfully.')
+      
       closeHazardModal()
       loadActivityHazards()
     } catch (err) {
@@ -473,6 +896,11 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   }
 
   async function handleRemoveSiteHazard(h: any) {
+    if (!navigator.onLine) {
+      setMessage('Remove functionality is not available in offline mode.')
+      return
+    }
+    
     if (!window.confirm(`Remove site hazard "${h.hazard_description}"?`)) return
     try {
       await axios.delete(`/api/activity_site_hazards?id=${h.id}`)
@@ -485,6 +913,11 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   }
 
   async function handleRemoveActivityHazard(h: any) {
+    if (!navigator.onLine) {
+      setMessage('Remove functionality is not available in offline mode.')
+      return
+    }
+    
     if (!window.confirm(`Remove activity hazard "${h.hazard_description}"?`))
       return
     try {
@@ -558,6 +991,12 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
         </Alert>
       )}
 
+      {isOffline && (
+        <div className="alert alert-warning text-center mb-3" role="alert">
+          <strong>Offline Mode:</strong> You can add risks and hazards offline. Remove functionality is disabled.
+        </div>
+      )}
+
       <h4
         style={{ fontWeight: 'bold', color: '#0094B6' }}
         className="mb-3 text-center"
@@ -614,6 +1053,8 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
                         variant="danger"
                         size="sm"
                         onClick={() => handleRemoveSiteHazard(h)}
+                        disabled={isOffline}
+                        title={isOffline ? 'Remove functionality not available offline' : ''}
                       >
                         Remove
                       </Button>
@@ -656,6 +1097,8 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
                         variant="danger"
                         size="sm"
                         onClick={() => handleRemoveActivityHazard(h)}
+                        disabled={isOffline}
+                        title={isOffline ? 'Remove functionality not available offline' : ''}
                       >
                         Remove
                       </Button>
@@ -738,6 +1181,8 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
                       variant="danger"
                       size="sm"
                       onClick={() => handleRemoveRisk(r)}
+                      disabled={isOffline}
+                      title={isOffline ? 'Remove functionality not available offline' : ''}
                     >
                       Remove
                     </Button>

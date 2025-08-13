@@ -163,32 +163,33 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
               <option value="Volunteer">Volunteer</option>
             </td>
             <td className="text-center">
-              {navigator.onLine && (
+              {navigator.onLine ? (
                 <>
-                 <button
-                      className="btn btn-warning btn-sm me-2 text-light rounded"
-                      style={{ backgroundColor: '#0094b6' }}
-                      onClick={() =>
+                  <button
+                    className="btn btn-warning btn-sm me-2 text-light rounded"
+                    style={{ backgroundColor: '#0094b6' }}
+                    onClick={() =>
                       navigate('/registervolunteer', {
-                      state: { user: u, isEdit: true }
-            })
-           }
-                disabled={!navigator.onLine}
-                title={!navigator.onLine ? 'Edit disabled offline' : ''}
-           >
-            Edit
-              </button>
-              <button
-        className="btn btn-danger btn-sm rounded"
-        style={{ backgroundColor: '#D37B40' }}
-        onClick={() => handleDelete(u.id)}
-        disabled={!navigator.onLine}
-        title={!navigator.onLine ? 'Delete disabled offline' : ''}
-       >
-        Delete
-       </button>
-      </>
-
+                        state: { user: u, isEdit: true }
+                      })
+                    }
+                    title="Edit volunteer"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="btn btn-danger btn-sm rounded"
+                    style={{ backgroundColor: '#D37B40' }}
+                    onClick={() => handleDelete(u.id)}
+                    title="Delete volunteer"
+                  >
+                    Delete
+                  </button>
+                </>
+              ) : (
+                <small className="text-muted">
+                  Edit/Delete offline disabled
+                </small>
               )}
             </td>
           </tr>
