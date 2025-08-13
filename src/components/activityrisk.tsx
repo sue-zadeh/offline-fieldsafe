@@ -932,31 +932,79 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
 
   async function handleAddNewSiteHazard() {
     if (!newSiteHazard.trim()) return
+    console.log(`➕ Adding new site hazard: "${newSiteHazard.trim()}"`)
+    
     try {
       await axios.post('/api/site_hazards', {
         hazard_description: newSiteHazard.trim(),
       })
       setNewSiteHazard('')
-      const siteRes = await axios.get('/api/site_hazards')
-      setSiteHazards(siteRes.data)
+      console.log(`✅ Site hazard added successfully`)
+      
+      // Reload all hazards to refresh the lists
+      await loadAllHazards()
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to add new site hazard.')
+      console.log(`❌ Failed to add site hazard (offline mode):`, err)
+      
+      // In offline mode, add to local list temporarily
+      const newHazard = {
+        id: Date.now(), // Temporary ID
+        hazard_description: newSiteHazard.trim(),
+        temp: true // Mark as temporary
+      }
+      
+      const updatedSiteHazards = [...siteHazards, newHazard]
+      setSiteHazards(updatedSiteHazards)
+      setNewSiteHazard('')
+      
+      // Update cache with all hazards including the new one
+      const allHazards = [
+        ...updatedSiteHazards.map(h => ({ ...h, type: 'site' })),
+        ...activityHazards.map(h => ({ ...h, type: 'activity' }))
+      ]
+      await cacheHazards(allHazards)
+      
+      console.log(`📝 Added site hazard locally (offline), will sync when online`)
+      setMessage('Site hazard added locally. Will sync when online.')
     }
   }
 
   async function handleAddNewActivityHazard() {
     if (!newActivityHazard.trim()) return
+    console.log(`➕ Adding new activity hazard: "${newActivityHazard.trim()}"`)
+    
     try {
       await axios.post('/api/activity_people_hazards', {
         hazard_description: newActivityHazard.trim(),
       })
       setNewActivityHazard('')
-      const actRes = await axios.get('/api/activity_people_hazards')
-      setActivityHazards(actRes.data)
+      console.log(`✅ Activity hazard added successfully`)
+      
+      // Reload all hazards to refresh the lists
+      await loadAllHazards()
     } catch (err) {
-      console.error(err)
-      setMessage('Failed to add new activity hazard.')
+      console.log(`❌ Failed to add activity hazard (offline mode):`, err)
+      
+      // In offline mode, add to local list temporarily
+      const newHazard = {
+        id: Date.now(), // Temporary ID
+        hazard_description: newActivityHazard.trim(),
+        temp: true // Mark as temporary
+      }
+      
+      const updatedActivityHazards = [...activityHazards, newHazard]
+      setActivityHazards(updatedActivityHazards)
+      setNewActivityHazard('')
+      
+      // Update cache with all hazards including the new one
+      const allHazards = [
+        ...siteHazards.map(h => ({ ...h, type: 'site' })),
+        ...updatedActivityHazards.map(h => ({ ...h, type: 'activity' }))
+      ]
+      await cacheHazards(allHazards)
+      
+      console.log(`📝 Added activity hazard locally (offline), will sync when online`)
+      setMessage('Activity hazard added locally. Will sync when online.')
     }
   }
 
