@@ -59,6 +59,9 @@ interface RiskRow {
   likelihood: string
   consequences: string
   risk_rating: string
+  // Offline fields
+  offlineControls?: string[]
+  isOffline?: boolean
 }
 
 //
@@ -362,6 +365,7 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
       } else {
         console.log('📱 Offline mode - loading from cache...')
         const cached = await getCachedHazards()
+        console.log('🔍 Raw cached hazards:', cached)
         
         // Use the same smart filtering logic for offline mode
         const siteHazardKeywords = ['Slippery', 'Weather', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
@@ -369,16 +373,26 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
         
         siteHazardsData = cached.filter(h => {
           // If it has explicit type, use it
-          if (h.type === 'site') return true
-          if (h.type === 'activity') return false
+          if (h.type === 'site') {
+            console.log(`✅ Site hazard by type: ${h.hazard_description}`)
+            return true
+          }
+          if (h.type === 'activity') {
+            console.log(`❌ Activity hazard by type: ${h.hazard_description}`)
+            return false
+          }
           
           // Otherwise, check the description for keywords
           const desc = h.hazard_description || ''
           const isSite = siteHazardKeywords.some(keyword => desc.includes(keyword))
           const isActivity = activityHazardKeywords.some(keyword => desc.includes(keyword))
           
+          console.log(`🔍 Checking "${desc}": site=${isSite}, activity=${isActivity}`)
+          
           // Default to site if not clearly activity
-          return !isActivity || isSite
+          const result = !isActivity || isSite
+          console.log(`➡️ Classification result for "${desc}": ${result ? 'SITE' : 'ACTIVITY'}`)
+          return result
         })
         
         activityHazardsData = cached.filter(h => {
@@ -736,6 +750,12 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
           const riskTitle = allRiskTitles.find(r => r.id === selectedRiskTitleId)
           if (riskTitle) {
             const tempId = Date.now() // Temporary ID for offline
+            
+            // Get the selected control texts for display
+            const selectedControlTexts = riskControlsForTitle
+              .filter(ctrl => chosenControlIds.includes(ctrl.id))
+              .map(ctrl => ctrl.control_text)
+            
             const newRisk: RiskRow = {
               activityRiskId: tempId,
               riskId: tempId,
@@ -744,6 +764,9 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
               likelihood: likelihood,
               consequences: consequences,
               risk_rating: 'Pending', // Will be calculated when synced
+              // Add offline controls for display
+              offlineControls: selectedControlTexts,
+              isOffline: true
             }
             setActivityRisks(prev => [...prev, newRisk])
             
@@ -819,9 +842,21 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
   // Hazards (unchanged)
   // =========================
   function openHazardModal(type: 'site' | 'activity') {
+    console.log(`🎯 Opening ${type} hazards modal...`)
     setHazardTab(type)
     setSelectedHazardIds([])
     setShowHazardModal(true)
+    
+    // Safety check: ensure hazards are loaded when modal opens
+    if (type === 'site' && siteHazards.length === 0) {
+      console.log('⚠️ Site hazards empty, reloading...')
+      loadAllHazards()
+    } else if (type === 'activity' && activityHazards.length === 0) {
+      console.log('⚠️ Activity hazards empty, reloading...')
+      loadAllHazards()
+    }
+    
+    console.log(`📊 Current ${type} hazards count: ${type === 'site' ? siteHazards.length : activityHazards.length}`)
   }
 
   function closeHazardModal() {
@@ -1189,23 +1224,27 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
             const relevantControls = detailedRiskControls.filter(
               (dc) => dc.risk_id === r.riskId
             )
+            
+            // For offline risks, use the stored offline controls
+            const controlsToShow = r.isOffline && r.offlineControls 
+              ? r.offlineControls 
+              : relevantControls.map(c => c.control_text)
+            
             return (
               <tr key={r.riskId}>
                 <td style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
                   {r.risk_title_label}
+                  {r.isOffline && <small style={{color: '#6c757d'}}> (offline)</small>}
                 </td>
                 <td>
                   <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
-                    {relevantControls.map((c, idx) => (
-                      <React.Fragment key={idx}>
-                        <li
-                          key={idx}
-                          style={{ listStyleType: 'disc', marginBottom: '4px' }}
-                        >
-                          {c.control_text}
-                        </li>
-                        {/* <br /> */}
-                      </React.Fragment>
+                    {controlsToShow.map((controlText, idx) => (
+                      <li
+                        key={idx}
+                        style={{ listStyleType: 'disc', marginBottom: '4px' }}
+                      >
+                        {controlText}
+                      </li>
                     ))}
                   </ul>
                 </td>
