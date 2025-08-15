@@ -86,9 +86,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     } else {
       // ===== OFFLINE login logic =====
       try {
+        // First, try cached credentials from previous online login
         const cached = await getOfflineCredential(email.trim().toLowerCase())
         if (cached?.password === password) {
-          console.log('✅ Logged in offline')
+          console.log('✅ Logged in offline with cached credentials')
           localStorage.setItem('loggedIn', 'true')
           localStorage.setItem('firstname', cached.firstname)
           localStorage.setItem('lastname', cached.lastname)
@@ -96,9 +97,37 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           onLoginSuccess()
           navigate('/home')
           return
-        } else {
-          setError('Offline login failed. Wrong credentials.')
         }
+        
+        // If no cached credentials, try pre-seeded demo credentials
+        const demoCredentials = {
+          'demo@fieldsafe.com': {
+            password: 'demo123',
+            firstname: 'Demo',
+            lastname: 'User',
+            role: 'volunteer'
+          },
+          'admin@fieldsafe.com': {
+            password: 'admin123',
+            firstname: 'Admin',
+            lastname: 'User',
+            role: 'admin'
+          }
+        }
+        
+        const demoUser = demoCredentials[email.trim().toLowerCase() as keyof typeof demoCredentials]
+        if (demoUser && demoUser.password === password) {
+          console.log('✅ Logged in offline with demo credentials')
+          localStorage.setItem('loggedIn', 'true')
+          localStorage.setItem('firstname', demoUser.firstname)
+          localStorage.setItem('lastname', demoUser.lastname)
+          localStorage.setItem('role', demoUser.role)
+          onLoginSuccess()
+          navigate('/home')
+          return
+        }
+        
+        setError('Offline login failed. Wrong credentials or no cached login found.')
       } catch (err) {
         setError('Offline login failed due to storage issue.')
       } finally {

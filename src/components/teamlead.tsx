@@ -87,6 +87,58 @@ const TeamLead: React.FC<TeamLeadProps> = ({ isSidebarOpen }) => {
   // Role change
   const handleRoleChange = async (userId: number, newRole: Role) => {
     try {
+      // Security check: Only Group Admins can change roles
+      if (currentUserRole !== 'Group Admin') {
+        setNotification('Access denied. Only Group Admins can change roles.')
+        return
+      }
+
+      // Find the user being modified
+      const userToUpdate = allLeads.find(u => u.id === userId) || searchResults.find(u => u.id === userId)
+      if (!userToUpdate) {
+        setNotification('User not found.')
+        return
+      }
+
+      // Validation: Ensure user data is still valid before allowing role change
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+      if (!emailRegex.test(userToUpdate.email)) {
+        setNotification(`Cannot change role: User ${userToUpdate.firstname} has an invalid email address. Please edit the user first to fix their email.`)
+        return
+      }
+
+      // Validate phone number
+      const phoneRegex = /^[\d\s+\-()]+$/
+      const cleanPhone = userToUpdate.phone.replace(/[\s\-()]/g, '')
+      const invalidPhonePatterns = [
+        /no\s?thanks?/i, /none?/i, /n\/a/i, /not?\s?applicable/i, 
+        /null/i, /undefined/i, /test/i, /example/i, /[a-zA-Z]{3,}/i
+      ]
+      
+      if (!phoneRegex.test(userToUpdate.phone) || 
+          cleanPhone.length < 7 || 
+          invalidPhonePatterns.some(pattern => pattern.test(userToUpdate.phone))) {
+        setNotification(`Cannot change role: User ${userToUpdate.firstname} has an invalid phone number. Please edit the user first to fix their phone number.`)
+        return
+      }
+
+      // Validate names
+      if (!/^[a-zA-Z\s]+$/.test(userToUpdate.firstname.trim()) || 
+          userToUpdate.firstname.trim().length < 2 ||
+          !/^[a-zA-Z\s]+$/.test(userToUpdate.lastname.trim()) || 
+          userToUpdate.lastname.trim().length < 2) {
+        setNotification(`Cannot change role: User ${userToUpdate.firstname} has invalid name data. Please edit the user first to fix their name.`)
+        return
+      }
+
+      // Confirm the role change
+      const confirmMessage = `Are you sure you want to change ${userToUpdate.firstname} ${userToUpdate.lastname}'s role from "${userToUpdate.role}" to "${newRole}"?`
+      if (!window.confirm(confirmMessage)) {
+        // Revert the dropdown to original value
+        fetchAllLeads()
+        return
+      }
+
       // Optimistically update local arrays
       setAllLeads((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
@@ -95,8 +147,13 @@ const TeamLead: React.FC<TeamLeadProps> = ({ isSidebarOpen }) => {
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       )
 
-      // PUT request
-      await axios.put(`/api/staff/${userId}`, { role: newRole })
+      // PUT request with validation flag
+      await axios.put(`/api/staff/${userId}`, { 
+        role: newRole,
+        validated: true,
+        updatedBy: currentUserRole,
+        timestamp: new Date().toISOString()
+      })
       setNotification(`Role updated to ${newRole} successfully!`)
 
       // If user is no longer "Team Leader," navigate
@@ -108,9 +165,20 @@ const TeamLead: React.FC<TeamLeadProps> = ({ isSidebarOpen }) => {
         // If still "Team Leader," re-fetch in case something changed
         fetchAllLeads()
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating role:', error)
-      setNotification('Failed to update user role.')
+      let errorMessage = 'Failed to update user role.'
+      
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error.response?.status === 400) {
+        errorMessage = 'Invalid data provided. User data must be valid before changing roles.'
+      }
+      
+      setNotification(errorMessage)
+      
+      // Revert the UI changes on error
+      fetchAllLeads()
     }
   }
 

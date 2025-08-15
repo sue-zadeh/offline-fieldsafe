@@ -82,15 +82,23 @@ define(['./workbox-9dc17825'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "/index.html",
-    "revision": "0.3f4uldhg09"
+    "revision": "0.2lrsgcfdhdg"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
-    allowlist: [/^\/$/]
+    allowlist: [/^\/$/],
+    denylist: [/^\/api\/.*$/]
   }));
-  workbox.registerRoute(/^https:\/\/your-api-domain\/api\//, new workbox.NetworkFirst({
+  workbox.registerRoute(/^https?:\/\/localhost:5000\/api\//, new workbox.NetworkFirst({
     "cacheName": "api-cache",
-    "networkTimeoutSeconds": 10,
+    "networkTimeoutSeconds": 3,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 100
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\/api\//, new workbox.NetworkFirst({
+    "cacheName": "api-cache-local",
+    "networkTimeoutSeconds": 3,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 100
     })]
@@ -104,7 +112,7 @@ define(['./workbox-9dc17825'], (function (workbox) { 'use strict';
   }), 'GET');
   workbox.registerRoute(/\.(jpg|jpeg)$/, new workbox.NetworkFirst({
     "cacheName": "large-image-cache",
-    "networkTimeoutSeconds": 5,
+    "networkTimeoutSeconds": 2,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 20,
       maxAgeSeconds: 604800

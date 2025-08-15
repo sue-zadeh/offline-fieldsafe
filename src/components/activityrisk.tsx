@@ -333,7 +333,7 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
           const cached = await getCachedHazards()
           
           // Smart filtering based on known hazard patterns from database
-          const siteHazardKeywords = ['Slippery', 'Weather', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
+          const siteHazardKeywords = ['Slippery', 'Bad Weather', 'Weather', 'Uneven Terrain', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
           const activityHazardKeywords = ['Fatigue', 'Training', 'Lifting', 'Physical', 'Human', 'Personnel']
           
           siteHazardsData = cached.filter(h => {
@@ -343,8 +343,8 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
             
             // Otherwise, check the description for keywords
             const desc = h.hazard_description || ''
-            const isSite = siteHazardKeywords.some(keyword => desc.includes(keyword))
-            const isActivity = activityHazardKeywords.some(keyword => desc.includes(keyword))
+            const isSite = siteHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
+            const isActivity = activityHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
             
             // Default to site if not clearly activity
             return !isActivity || isSite
@@ -357,7 +357,7 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
             
             // Otherwise, check the description for keywords
             const desc = h.hazard_description || ''
-            return activityHazardKeywords.some(keyword => desc.includes(keyword))
+            return activityHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
           })
           
           console.log(`📚 Smart-filtered: ${siteHazardsData.length} site + ${activityHazardsData.length} activity hazards from cache`)
@@ -368,7 +368,7 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
         console.log('🔍 Raw cached hazards:', cached)
         
         // Use the same smart filtering logic for offline mode
-        const siteHazardKeywords = ['Slippery', 'Weather', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
+        const siteHazardKeywords = ['Slippery', 'Bad Weather', 'Weather', 'Uneven Terrain', 'Terrain', 'Surface', 'Environmental', 'Obstacle']
         const activityHazardKeywords = ['Fatigue', 'Training', 'Lifting', 'Physical', 'Human', 'Personnel']
         
         siteHazardsData = cached.filter(h => {
@@ -384,8 +384,8 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
           
           // Otherwise, check the description for keywords
           const desc = h.hazard_description || ''
-          const isSite = siteHazardKeywords.some(keyword => desc.includes(keyword))
-          const isActivity = activityHazardKeywords.some(keyword => desc.includes(keyword))
+          const isSite = siteHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
+          const isActivity = activityHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
           
           console.log(`🔍 Checking "${desc}": site=${isSite}, activity=${isActivity}`)
           
@@ -402,7 +402,7 @@ const ActivityRisk: React.FC<ActivityRiskProps> = ({ activityId }) => {
           
           // Otherwise, check the description for keywords
           const desc = h.hazard_description || ''
-          return activityHazardKeywords.some(keyword => desc.includes(keyword))
+          return activityHazardKeywords.some(keyword => desc.toLowerCase().includes(keyword.toLowerCase()))
         })
         
         console.log(`📚 Offline smart-filtered: ${siteHazardsData.length} site + ${activityHazardsData.length} activity hazards from cache`)

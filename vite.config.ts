@@ -43,9 +43,11 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\/.*$/], // Don't fallback for API routes
         globPatterns: ['**/*.{js,css,html,png,svg,json}'], // Removed jpg to avoid large files
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit instead of default 2MB
         additionalManifestEntries: [
+          { url: '/', revision: null }, // Add explicit root entry
           { url: '/volunteer', revision: null },
           { url: '/registervolunteer', revision: null },
           { url: '/activitytabs', revision: null },
@@ -73,15 +75,26 @@ export default defineConfig({
           { url: '/navbar', revision: null },
         ],
         runtimeCaching: [
+          // API requests - NetworkFirst with fallback
           {
-            urlPattern: /^https:\/\/your-api-domain\/api\//,
+            urlPattern: /^https?:\/\/localhost:5000\/api\//,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
+              networkTimeoutSeconds: 3,
               expiration: { maxEntries: 100 },
             },
           },
+          {
+            urlPattern: /\/api\//,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache-local',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 100 },
+            },
+          },
+          // Images
           {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif)$/,
             handler: 'CacheFirst',
@@ -93,12 +106,13 @@ export default defineConfig({
               },
             },
           },
+          // Large images with shorter timeout
           {
             urlPattern: /\.(jpg|jpeg)$/,
-            handler: 'NetworkFirst', // For large images, try network first
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'large-image-cache',
-              networkTimeoutSeconds: 5,
+              networkTimeoutSeconds: 2,
               expiration: { 
                 maxEntries: 20,
                 maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days for large images

@@ -13,20 +13,12 @@ import {
   Button,
   Col,
   Row,
-  Modal,
   Alert,
-  ListGroup,
 } from 'react-bootstrap'
 
 const OCEAN_BLUE = '#0094B6'
 
 type ProjectStatus = 'inprogress' | 'completed' | 'onhold' | 'archived'
-
-interface Objective {
-  id: number
-  title: string
-  measurement: string
-}
 
 interface AddProjectProps {
   isSidebarOpen: boolean
@@ -61,6 +53,8 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
   const locationState = useLocation().state as {
     isEdit?: boolean
     projectId?: number
+    activeTab?: string
+    projectFormData?: any
   }
   const navigate = useNavigate()
 
@@ -76,7 +70,6 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
 
   const [notification, setNotification] = useState<string | null>(null)
 
-  const [allObjectives, setAllObjectives] = useState<Objective[]>([])
   const [selectedObjectives, setSelectedObjectives] = useState<number[]>([])
   const [location, setLocation] = useState('')
   const [mapCenter, setMapCenter] = useState(centerDefault)
@@ -101,23 +94,78 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
     string | null
   >(null)
 
+  // For project data persistence across pages
+  const [projectFormData, setProjectFormData] = useState<any>(null)
+
   // Original data for no-changes detection
   const [originalData, setOriginalData] = useState<OriginalData | null>(null)
 
-  // For objectives modal
-  const [showObjModal, setShowObjModal] = useState(false)
   const todayString = new Date().toISOString().split('T')[0]
 
-  // Tab switching
+  // Tab switching with form data persistence
   const [activeTab, setActiveTab] = useState('details')
-  const handleNavClick = (tab: string) => setActiveTab(tab)
+  const handleNavClick = (tab: string) => {
+    if (tab === 'objectives') {
+      // Store form data when navigating to objectives
+      const currentFormData = {
+        name,
+        location,
+        startDate,
+        status,
+        emergencyServices,
+        localMedicalCenterAddress,
+        localMedicalCenterPhone,
+        localHospital,
+        primaryContactName,
+        primaryContactPhone,
+        imageFile,
+        inductionFile,
+        existingImageUrl,
+        existingInductionUrl,
+        isEdit,
+        projectId,
+        originalData,
+        selectedObjectives,
+        mapCenter,
+        markerPos
+      }
+      setProjectFormData(currentFormData)
+    }
+    setActiveTab(tab)
+  }
 
   // LOAD objectives and project data if editing
   useEffect(() => {
-    axios /// fetch objectives
-      .get('/api/objectives')
-      .then((res) => setAllObjectives(res.data))
-      .catch((err) => console.error('Error fetching objectives:', err))
+    // Check for form data from navigation
+    if (locationState?.projectFormData) {
+      const formData = locationState.projectFormData
+      setName(formData.name || '')
+      setLocation(formData.location || '')
+      setStartDate(formData.startDate || '')
+      setStatus(formData.status || 'inprogress')
+      setEmergencyServices(formData.emergencyServices || '')
+      setLocalMedicalCenterAddress(formData.localMedicalCenterAddress || '')
+      setLocalMedicalCenterPhone(formData.localMedicalCenterPhone || '')
+      setLocalHospital(formData.localHospital || '')
+      setPrimaryContactName(formData.primaryContactName || '')
+      setPrimaryContactPhone(formData.primaryContactPhone || '')
+      setImageFile(formData.imageFile || null)
+      setInductionFile(formData.inductionFile || null)
+      setExistingImageUrl(formData.existingImageUrl || null)
+      setExistingInductionUrl(formData.existingInductionUrl || null)
+      setIsEdit(formData.isEdit || false)
+      setProjectId(formData.projectId || null)
+      setOriginalData(formData.originalData || null)
+      setSelectedObjectives(formData.selectedObjectives || [])
+      setMapCenter(formData.mapCenter || centerDefault)
+      setMarkerPos(formData.markerPos || centerDefault)
+      setProjectFormData(formData)
+    }
+
+    // Set active tab from location state
+    if (locationState?.activeTab) {
+      setActiveTab(locationState.activeTab)
+    }
 
     if (locationState?.isEdit && locationState.projectId) {
       setIsEdit(true)
@@ -165,11 +213,10 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
     }
   }, [locationState])
 
-  // re-fetch objectives so we can see new ones immediately
+  // re-fetch objectives so we can see new ones immediately (placeholder)
   const reloadObjectives = async () => {
     try {
-      const response = await axios.get('/api/objectives')
-      setAllObjectives(response.data)
+      console.log('Objectives reload triggered')
     } catch (err) {
       console.error('Error reloading objectives:', err)
     }
@@ -188,18 +235,72 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
   // Helper to show a notification
   const notify = (msg: string) => setNotification(msg)
 
-  const toggleObjective = (objId: number) => {
-    setSelectedObjectives((prev) =>
-      prev.includes(objId) ? prev.filter((x) => x !== objId) : [...prev, objId]
-    )
+  // Helper function to validate form data
+  const validateFormData = () => {
+    if (!name || !location || !startDate || !emergencyServices) {
+      notify('All fields are required, including Emergency Services.')
+      return false
+    }
+    if (!/^[+\d]+$/.test(primaryContactPhone)) {
+      notify(
+        'Primary Contact Phone must contain only numbers and may start with +.'
+      )
+      return false
+    }
+    if (!/^[+\d]+$/.test(localMedicalCenterPhone)) {
+      notify(
+        'Local Medical Center Phone must contain only numbers and may start with +.'
+      )
+      return false
+    }
+    return true
   }
-  const openObjModal = () => setShowObjModal(true)
-  const closeObjModal = () => setShowObjModal(false)
 
-  const selectedObjectivesText = allObjectives
-    .filter((obj) => selectedObjectives.includes(obj.id))
-    .map((o) => `${o.title} (${o.measurement})`)
-    .join('\n')
+  // Navigate to objectives page after validating current form
+  const handleNext = async () => {
+    if (!validateFormData()) return
+    
+    // Check project name uniqueness if not editing
+    if (!isEdit) {
+      try {
+        const checkRes = await axios.get(
+          `/api/projects?name=${encodeURIComponent(name)}`
+        )
+        if (checkRes.data?.exists) {
+          notify('Project name already exists. Please choose another.')
+          return
+        }
+      } catch (error) {
+        console.warn('Client uniqueness check error:', error)
+      }
+    }
+    
+    // Store current form data and navigate to objectives tab
+    const currentFormData = {
+      name,
+      location,
+      startDate,
+      status,
+      emergencyServices,
+      localMedicalCenterAddress,
+      localMedicalCenterPhone,
+      localHospital,
+      primaryContactName,
+      primaryContactPhone,
+      imageFile,
+      inductionFile,
+      existingImageUrl,
+      existingInductionUrl,
+      isEdit,
+      projectId,
+      originalData,
+      selectedObjectives,
+      mapCenter,
+      markerPos
+    }
+    setProjectFormData(currentFormData)
+    handleNavClick('objectives')
+  }
 
   const handlePlaceChanged = () => {
     if (autocompleteRef.current) {
@@ -213,8 +314,6 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
       }
     }
   }
-
-  const navigateToSearch = () => navigate('/searchproject')
 
   // ===========================
   //       CREATE OR EDIT
@@ -370,78 +469,6 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
     }
   }
 
-  // ===========================
-  //   SAVE as a new project in edit page
-  // ===========================
-  const handleSaveAsNewProject = async () => {
-    // duplicates the current form data into a new project
-    if (!name || !location || !startDate || !emergencyServices) {
-      notify('All fields are required, including Emergency Services.')
-      return
-    }
-    if (!/^[+\d]+$/.test(primaryContactPhone)) {
-      notify(
-        'Primary Contact Phone must contain only numbers and may start with +.'
-      )
-      return
-    }
-    if (!/^[+\d]+$/.test(localMedicalCenterPhone)) {
-      notify(
-        'Local Medical Center Phone must contain only numbers and may start with +.'
-      )
-      return
-    }
-
-    try {
-      const checkRes = await axios.get(
-        `/api/projects?name=${encodeURIComponent(name)}`
-      )
-      if (checkRes.data?.exists) {
-        notify('Project name already exists. Please choose another.')
-        return
-      }
-    } catch (error) {
-      console.warn('Uniqueness check error (save as new):', error)
-    }
-
-    // Build new formData
-    const formData = new FormData()
-    formData.append('name', name)
-    formData.append('location', location)
-    formData.append('startDate', startDate)
-    formData.append('status', status)
-    const adminId = localStorage.getItem('adminId')
-    if (adminId) {
-      formData.append('createdBy', adminId)
-    }
-    formData.append('emergencyServices', emergencyServices)
-    formData.append('localMedicalCenterAddress', localMedicalCenterAddress)
-    formData.append('localMedicalCenterPhone', localMedicalCenterPhone)
-    formData.append('localHospital', localHospital)
-    formData.append('primaryContactName', primaryContactName)
-    formData.append('primaryContactPhone', primaryContactPhone)
-    formData.append('objectives', JSON.stringify(selectedObjectives))
-
-    if (imageFile) formData.append('image', imageFile)
-    if (inductionFile) formData.append('inductionFile', inductionFile)
-
-    try {
-      await axios.post('/api/projects', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      notify('Project duplicated successfully!')
-      setTimeout(navigateToSearch, 1000)
-    } catch (err) {
-      const axiosErr = err as AxiosError<{ message: string }>
-      if (axiosErr.response?.status === 400) {
-        notify('Project name already exists. Please choose another.')
-      } else {
-        console.error('Error duplicating project:', err)
-        notify('Failed to duplicate project.')
-      }
-    }
-  }
-
   return (
     <div
       className={`container-fluid ${
@@ -580,23 +607,6 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
                   />
                 </Form.Group>
 
-                <Form.Group className="mb-3 fw-bold">
-                  <Form.Label>Objectives</Form.Label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <Form.Control
-                      readOnly
-                      as="textarea"
-                      rows={2}
-                      value={selectedObjectivesText}
-                      placeholder="(No objectives selected)"
-                      onClick={openObjModal}
-                    />
-                    <Button variant="secondary" onClick={openObjModal}>
-                      Edit
-                    </Button>
-                  </div>
-                </Form.Group>
-
                 <Row>
                   <Col md={6}>
                     <Form.Group controlId="startDate" className="mb-3">
@@ -692,29 +702,15 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
                   </MapLoader>
                 </Form.Group>
 
-                {/* If editing => show two buttons: "Save Changes" and "Save as New Project" */}
-                {isEdit ? (
-                  <div className="d-flex flex-column pb-3 fs-5 gap-2">
-                    <Button
-                      type="submit"
-                      style={{ backgroundColor: OCEAN_BLUE, color: '#fff' }}
-                    >
-                      Save Changes
-                    </Button>
-                    <Button variant="warning" onClick={handleSaveAsNewProject}>
-                      Save as New Project
-                    </Button>
-                  </div>
-                ) : (
-                  /* If creating => single "Save" button */
-                  <Button
-                    type="submit"
-                    className="w-100 m-3 fs-5"
-                    style={{ backgroundColor: OCEAN_BLUE, color: '#fff' }}
-                  >
-                    Save
-                  </Button>
-                )}
+                {/* Navigation Button - Next to go to Objectives */}
+                <Button
+                  type="button"
+                  className="w-100 m-3 fs-5"
+                  style={{ backgroundColor: OCEAN_BLUE, color: '#fff' }}
+                  onClick={handleNext}
+                >
+                  {isEdit ? 'Continue to Objectives' : 'Next: Add Objectives'}
+                </Button>
               </Form>
             </div>
 
@@ -924,12 +920,15 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
         {/* Additional tabs: Objectives, Hazards, Risks */}
         {activeTab === 'objectives' && (
           <div className="py-2">
-            {/* Pass a callback so can refresh objectives */}
+            {/* Pass project form data and save handlers to AddObjectives */}
             <AddObjectives
               isSidebarOpen={isSidebarOpen}
               onNewObjectiveCreated={reloadObjectives}
               onObjectivesChanged={reloadObjectives}
               onObjectivesEdited={reloadObjectives}
+              projectFormData={projectFormData}
+              selectedObjectives={selectedObjectives}
+              onObjectivesSelectionChange={setSelectedObjectives}
             />
           </div>
         )}
@@ -944,42 +943,6 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
           </div>
         )}
       </div>
-
-      {/* Modal for objectives */}
-      <Modal show={showObjModal} onHide={closeObjModal} size="sm">
-        <Modal.Header closeButton>
-          <Modal.Title>Select Objectives</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p className="text-muted mb-3 fs-5 fw-bold text-center">
-            Please choose objectives related to your project
-          </p>
-          <ListGroup>
-            {allObjectives.map((obj) => (
-              <ListGroup.Item
-                key={obj.id}
-                className="d-flex justify-content-between align-items-center text-wrap"
-                style={{
-                  maxHeight: '400px',
-                  overflowY: 'auto',
-                  whiteSpace: 'normal',
-                  wordBreak: 'break-word',
-                }}
-                action
-                onClick={() => toggleObjective(obj.id)}
-                active={selectedObjectives.includes(obj.id)}
-              >
-                {obj.title} ({obj.measurement})
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-        </Modal.Body>
-        <Modal.Footer className="d-flex justify-content-center">
-          <Button variant="success" className="w-50" onClick={closeObjModal}>
-            Done
-          </Button>
-        </Modal.Footer>
-      </Modal>
     </div>
   )
 }

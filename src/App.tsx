@@ -205,7 +205,7 @@ const App: React.FC = () => {
           <button
             type="button"
             style={{ backgroundColor: '#0094B6', color: 'white' }}
-            className="btn btn-info btn-sm text-light mt-5 p-4 w-100 fs-3 fw-bold shadow rounded"
+            className="btn btn-info btn-sm text-light mt-5 p-4 w-25 fs-3 fw-bold shadow rounded"
             onClick={handleInstallClick}
           >
             Install App

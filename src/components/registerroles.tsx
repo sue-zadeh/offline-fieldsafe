@@ -83,11 +83,65 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
   }, [notification])
 
   // ----------------------------------------------------------------
-  // Handle form changes
+  // Handle form changes with real-time validation
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+    
+    // Clear previous notifications when user starts typing
+    if (notification) {
+      setNotification(null)
+    }
+    
+    let processedValue = value
+    
+    // Real-time validation and processing
+    if (name === 'email') {
+      processedValue = value.trim().toLowerCase()
+    } else if (name === 'phone') {
+      // Allow only valid phone characters as user types
+      processedValue = value.replace(/[^0-9\s+\-()]/g, '')
+    } else if (name === 'firstname' || name === 'lastname') {
+      // Allow only letters and spaces, remove numbers and special chars
+      processedValue = value.replace(/[^a-zA-Z\s]/g, '')
+    }
+    
+    setFormData({ ...formData, [name]: processedValue })
+    
+    // Real-time validation feedback
+    if (name === 'email' && processedValue) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+      if (!emailRegex.test(processedValue)) {
+        setNotification('Please enter a valid email address.')
+        setTimeout(() => setNotification(null), 2000)
+      }
+    }
+    
+    if (name === 'phone' && processedValue) {
+      const cleanPhone = processedValue.replace(/[\s\-()]/g, '')
+      const invalidPatterns = [/no\s?thanks?/i, /none?/i, /n\/a/i, /[a-zA-Z]{3,}/i]
+      if (invalidPatterns.some(pattern => pattern.test(processedValue))) {
+        setNotification('Please enter a valid phone number, not text.')
+        setTimeout(() => setNotification(null), 2000)
+      } else if (cleanPhone.length > 0 && cleanPhone.length < 7) {
+        setNotification('Phone number must be at least 7 digits long.')
+        setTimeout(() => setNotification(null), 2000)
+      }
+    }
+  }
+
+  // Prevent form submission with Enter key if validation fails
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      const errorMsg = validateForm()
+      if (errorMsg) {
+        e.preventDefault()
+        e.stopPropagation()
+        setNotification(errorMsg)
+        return false
+      }
+    }
   }
 
   const toggleShowPassword = () => setShowPassword((prev) => !prev)
@@ -111,21 +165,53 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
   const validateForm = (): string | null => {
     const { firstname, lastname, email, phone, password } = formData
 
+    // Trim whitespace and check for empty fields
     if (
-      !firstname ||
-      !lastname ||
-      !email ||
-      !phone ||
-      !password ||
-      !confirmPassword
+      !firstname?.trim() ||
+      !lastname?.trim() ||
+      !email?.trim() ||
+      !phone?.trim() ||
+      !password?.trim() ||
+      !confirmPassword?.trim()
     ) {
-      return 'All fields are required.'
+      return 'All fields are required and cannot be empty spaces.'
     }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      return 'Invalid email format.'
+
+    // Validate firstname and lastname (no numbers or special chars)
+    if (!/^[a-zA-Z\s]+$/.test(firstname.trim()) || firstname.trim().length < 2) {
+      return 'First name must contain only letters and be at least 2 characters long.'
     }
-    if (!/^[+\d]+$/.test(phone)) {
-      return 'Phone must contain only numbers and may start with +.'
+    if (!/^[a-zA-Z\s]+$/.test(lastname.trim()) || lastname.trim().length < 2) {
+      return 'Last name must contain only letters and be at least 2 characters long.'
+    }
+
+    // Strict email validation
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(email.trim().toLowerCase())) {
+      return 'Please enter a valid email address (e.g. user@example.com).'
+    }
+
+    // Strict phone validation - only digits, spaces, +, -, (, )
+    const phoneRegex = /^[\d\s+\-()]+$/
+    const cleanPhone = phone.trim().replace(/[\s\-()]/g, '')
+    if (!phoneRegex.test(phone.trim()) || cleanPhone.length < 7) {
+      return 'Phone number must contain only digits, spaces, +, -, (, ) and be at least 7 digits long.'
+    }
+
+    // Check for common invalid phone entries
+    const invalidPhonePatterns = [
+      /no\s?thanks?/i,
+      /none?/i,
+      /n\/a/i,
+      /not?\s?applicable/i,
+      /null/i,
+      /undefined/i,
+      /test/i,
+      /example/i,
+      /[a-zA-Z]{3,}/i // Any word with 3+ letters
+    ]
+    if (invalidPhonePatterns.some(pattern => pattern.test(phone.trim()))) {
+      return 'Please enter a valid phone number, not text or placeholder values.'
     }
 
     // If this is a new staff or if user typed a new password
@@ -188,26 +274,84 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
   // Submit the form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation() // Prevent event bubbling
+    
+    // Prevent form submission if user tries to bypass validation
+    if (isLoading) {
+      return // Prevent double submission
+    }
+    
+    // Trim all fields before validation
+    const trimmedFormData = {
+      ...formData,
+      firstname: formData.firstname.trim(),
+      lastname: formData.lastname.trim(),
+      email: formData.email.trim().toLowerCase(),
+      phone: formData.phone.trim()
+    }
+    
+    // Update form data with trimmed values
+    setFormData(trimmedFormData)
+    
+    // CRITICAL: Always validate on submit, regardless of HTML5 validation
     const errorMsg = validateForm()
     if (errorMsg) {
       setNotification(errorMsg)
-      return
+      setIsLoading(false)
+      return false // Explicitly prevent submission
     }
 
     setIsLoading(true)
     setError('')
 
+    // Additional client-side checks before sending to server
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(trimmedFormData.email)) {
+      setNotification('Invalid email format detected. Please enter a valid email.')
+      setIsLoading(false)
+      return false
+    }
+    
+    // Additional phone validation to catch bypass attempts
+    const phoneRegex = /^[\d\s+\-()]+$/
+    const cleanPhone = trimmedFormData.phone.replace(/[\s\-()]/g, '')
+    if (!phoneRegex.test(trimmedFormData.phone) || cleanPhone.length < 7) {
+      setNotification('Invalid phone number detected. Please enter a valid phone number.')
+      setIsLoading(false)
+      return false
+    }
+    
+    // Check for invalid text in phone field
+    const invalidPhonePatterns = [
+      /no\s?thanks?/i, /none?/i, /n\/a/i, /not?\s?applicable/i, /null/i, 
+      /undefined/i, /test/i, /example/i, /[a-zA-Z]{3,}/i
+    ]
+    if (invalidPhonePatterns.some(pattern => pattern.test(trimmedFormData.phone))) {
+      setNotification('Please enter a valid phone number, not text or placeholder values.')
+      setIsLoading(false)
+      return false
+    }
+
     // Check email uniqueness
     const isEmailTaken = users.some(
-      (u) => u.email === formData.email && u.id !== formData.id
+      (u) => u.email === trimmedFormData.email && u.id !== trimmedFormData.id
     )
     if (isEmailTaken) {
       setNotification('That email is already in use.')
-      return
+      setIsLoading(false)
+      return false
     }
 
     try {
       setIsSendingEmail(true)
+
+      // Use trimmed form data for submission
+      const dataToSubmit = {
+        ...trimmedFormData,
+        // Additional server-side validation flags
+        clientValidated: true,
+        timestamp: new Date().toISOString()
+      }
 
       // If editing => PUT
       if (formData.id) {
@@ -215,50 +359,64 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
         const originalUser = users.find((u) => u.id === formData.id)
         if (
           originalUser &&
-          originalUser.firstname === formData.firstname &&
-          originalUser.lastname === formData.lastname &&
-          originalUser.email === formData.email &&
-          originalUser.phone === formData.phone &&
-          originalUser.role === formData.role &&
+          originalUser.firstname === dataToSubmit.firstname &&
+          originalUser.lastname === dataToSubmit.lastname &&
+          originalUser.email === dataToSubmit.email &&
+          originalUser.phone === dataToSubmit.phone &&
+          originalUser.role === dataToSubmit.role &&
           // If password is blank, they didn't update it
-          !formData.password // or formData.password.length===0
+          !dataToSubmit.password // or formData.password.length===0
         ) {
           const confirmNoChanges = window.confirm(
             'No changes detected. Save anyway?'
           )
           if (!confirmNoChanges) {
             setIsSendingEmail(false)
-            return
+            setIsLoading(false)
+            return false
           }
         }
 
         // Perform the update
-        await axios.put(`/api/staff/${formData.id}`, formData)
-        setNotification(`Successfully updated ${formData.firstname}!`)
+        await axios.put(`/api/staff/${dataToSubmit.id}`, dataToSubmit)
+        setNotification(`Successfully updated ${dataToSubmit.firstname}!`)
       } else {
         // Creating new staff => POST
-        await axios.post('/api/staff', formData)
+        await axios.post('/api/staff', dataToSubmit)
         // Send registration email
         await sendRegistrationEmail()
-        setNotification(`${formData.firstname} registered successfully!`)
+        setNotification(`${dataToSubmit.firstname} registered successfully!`)
       }
 
       setTimeout(() => {
         setIsSendingEmail(false)
+        setIsLoading(false)
 
         // Navigate to correct staff page
-        if (formData.role === 'Group Admin') {
+        if (dataToSubmit.role === 'Group Admin') {
           navigate('/groupadmin')
-        } else if (formData.role === 'Field Staff') {
+        } else if (dataToSubmit.role === 'Field Staff') {
           navigate('/fieldstaff')
         } else {
           navigate('/teamlead')
         }
       }, 1500)
-    } catch (err) {
+      
+      return true // Success
+    } catch (err: any) {
       console.error('Error saving staff:', err)
-      setNotification('Failed to save staff.')
+      let errorMessage = 'Failed to save staff.'
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message
+      } else if (err.response?.status === 400) {
+        errorMessage = 'Invalid data provided. Please check all fields.'
+      }
+      
+      setNotification(errorMessage)
       setIsSendingEmail(false)
+      setIsLoading(false)
+      return false // Failed
     }
   }
 
@@ -291,6 +449,8 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
               <Form
                 className="form-container bg-white p-3 rounded shadow"
                 onSubmit={handleSubmit}
+                onKeyDown={handleKeyDown}
+                noValidate={false} // Enable HTML5 validation
               >
                 <Row>
                   <Col md={6}>
@@ -308,8 +468,18 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                             e as React.ChangeEvent<HTMLInputElement>
                           )
                         }
+                        onInvalid={(e) => {
+                          e.preventDefault()
+                          setNotification('Please enter a valid first name (letters only, minimum 2 characters)')
+                        }}
                         placeholder="Enter first name"
                         required
+                        minLength={2}
+                        maxLength={50}
+                        pattern="[a-zA-Z\s]+"
+                        title="First name must contain only letters and spaces, minimum 2 characters"
+                        spellCheck="false"
+                        autoComplete="given-name"
                       />
                     </Form.Group>
                   </Col>
@@ -328,8 +498,18 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                             e as React.ChangeEvent<HTMLInputElement>
                           )
                         }
+                        onInvalid={(e) => {
+                          e.preventDefault()
+                          setNotification('Please enter a valid last name (letters only, minimum 2 characters)')
+                        }}
                         placeholder="Enter last name"
                         required
+                        minLength={2}
+                        maxLength={50}
+                        pattern="[a-zA-Z\s]+"
+                        title="Last name must contain only letters and spaces, minimum 2 characters"
+                        spellCheck="false"
+                        autoComplete="family-name"
                       />
                     </Form.Group>
                   </Col>
@@ -350,8 +530,16 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                         e as React.ChangeEvent<HTMLInputElement>
                       )
                     }
+                    onInvalid={(e) => {
+                      e.preventDefault()
+                      setNotification('Please enter a valid email address (e.g. user@example.com)')
+                    }}
                     placeholder="user@example.com"
                     required
+                    maxLength={100}
+                    pattern="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+                    title="Please enter a valid email address (e.g. user@example.com)"
+                    spellCheck="false"
                   />
                 </Form.Group>
 
@@ -361,7 +549,7 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                     Phone
                   </Form.Label>
                   <Form.Control
-                    type="text"
+                    type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={(e) =>
@@ -369,8 +557,18 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                         e as React.ChangeEvent<HTMLInputElement>
                       )
                     }
-                    placeholder="Enter phone number (digits and + allowed)"
+                    onInvalid={(e) => {
+                      e.preventDefault()
+                      setNotification('Please enter a valid phone number (digits, spaces, +, -, (, ) only, minimum 7 digits)')
+                    }}
+                    placeholder="Enter phone number (e.g. +64 21 123 4567)"
                     required
+                    minLength={7}
+                    maxLength={20}
+                    pattern="[\d\s+\-()]+"
+                    title="Phone number must contain only digits, spaces, +, -, (, ) and be at least 7 digits long"
+                    spellCheck="false"
+                    autoComplete="tel"
                   />
                 </Form.Group>
 

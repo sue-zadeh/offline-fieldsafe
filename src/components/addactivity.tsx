@@ -306,9 +306,17 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
           await axios.post('/api/activities', activity)
           alert('Activity created successfully!')
         } else {
+          // For offline saving, we need to include the project name
+          const selectedProject = projects.find(p => p.id === activity.project_id)
+          const activityWithProjectName = {
+            ...activity,
+            projectName: selectedProject?.name || '',
+            timestamp: Date.now()
+          }
+          
           await saveOfflineItem({
             type: 'activity',
-            data: { ...activity, timestamp: Date.now() },
+            data: activityWithProjectName,
             synced: false,
             timestamp: Date.now(),
           })
