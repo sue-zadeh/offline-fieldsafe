@@ -30,12 +30,22 @@ const Navbar: React.FC<NavbarProps> = ({
 
   // Track whether navbar is collapsed or not
   const [navCollapsed, setNavCollapsed] = useState(true)
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
 
   // current route
   const isActive = (path: string) => location.pathname === path
 
   // close the navbar after any link click
   const handleLinkClick = () => {
+    setNavCollapsed(true)
+  }
+
+  const toggleDropdown = (dropdownId: string) => {
+    setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)
+  }
+
+  const closeDropdown = () => {
+    setOpenDropdown(null)
     setNavCollapsed(true)
   }
 
@@ -89,14 +99,17 @@ const Navbar: React.FC<NavbarProps> = ({
         >
           <ul className="navbar-nav ms-auto fs-6">
             {/* Projects */}
-            <li className="nav-item dropdown px-3">
+            <li className={`nav-item dropdown px-3 ${openDropdown === 'projects' ? 'show' : ''}`}>
               <a
                 className="nav-link dropdown-toggle"
                 href="#"
                 id="projectsDropdown"
                 role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toggleDropdown('projects')
+                }}
+                aria-expanded={openDropdown === 'projects'}
                 style={{
                   color: '#1A1A1A',
                   fontWeight:
@@ -108,16 +121,15 @@ const Navbar: React.FC<NavbarProps> = ({
                 <BsCalendar2Plus style={{ marginRight: '5px' }} />
                 Projects
               </a>
-              <ul className="dropdown-menu" aria-labelledby="projectsDropdown">
+              <ul className={`dropdown-menu ${openDropdown === 'projects' ? 'show' : ''}`} aria-labelledby="projectsDropdown">
                 <li>
-                  {/* 4) onClick={handleLinkClick} to close navbar */}
                   <Link
                     to="/addproject"
                     className="dropdown-item"
                     style={{
                       fontWeight: isActive('/addproject') ? 'bold' : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <BsCalendar2Plus style={{ marginRight: '5px' }} />
                     {location.pathname === '/editproject'
@@ -125,7 +137,6 @@ const Navbar: React.FC<NavbarProps> = ({
                       : 'Add Project'}
                   </Link>
                 </li>
-
                 <li>
                   <Link
                     to="/searchproject"
@@ -135,7 +146,7 @@ const Navbar: React.FC<NavbarProps> = ({
                         ? 'bold'
                         : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <BsCalendarCheck style={{ marginRight: '5px' }} />
                     Search Project
@@ -145,14 +156,17 @@ const Navbar: React.FC<NavbarProps> = ({
             </li>
 
             {/* Activity Notes */}
-            <li className="nav-item dropdown px-3">
+            <li className={`nav-item dropdown px-3 ${openDropdown === 'activity' ? 'show' : ''}`}>
               <a
                 className="nav-link dropdown-toggle"
                 href="#"
                 id="activityDropdown"
                 role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toggleDropdown('activity')
+                }}
+                aria-expanded={openDropdown === 'activity'}
                 style={{
                   color: '#1A1A1A',
                   fontWeight:
@@ -164,7 +178,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 <MdLocalActivity style={{ marginRight: '5px' }} />
                 Activity Notes
               </a>
-              <ul className="dropdown-menu" aria-labelledby="activityDropdown">
+              <ul className={`dropdown-menu ${openDropdown === 'activity' ? 'show' : ''}`} aria-labelledby="activityDropdown">
                 <li>
                   <Link
                     to="/activity-notes"
@@ -174,7 +188,7 @@ const Navbar: React.FC<NavbarProps> = ({
                         ? 'bold'
                         : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <MdLocalActivity style={{ marginRight: '5px' }} />
                     Add Activity
@@ -189,7 +203,7 @@ const Navbar: React.FC<NavbarProps> = ({
                         ? 'bold'
                         : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <FaTasks style={{ marginRight: '5px' }} />
                     Search Activity
@@ -199,7 +213,6 @@ const Navbar: React.FC<NavbarProps> = ({
             </li>
 
             {/* Report */}
-
             <li className="nav-item px-3">
               <Link
                 to="/report"
@@ -209,7 +222,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 className={`nav-link d-flex align-items-center ${
                   isActive('/report') ? 'fw-bold' : ''
                 }`}
-                onClick={handleLinkClick}
+                onClick={closeDropdown}
               >
                 <FaRegChartBar style={{ marginRight: '5px' }} />
                 Report
@@ -217,14 +230,17 @@ const Navbar: React.FC<NavbarProps> = ({
             </li>
 
             {/* Organization Profile */}
-            <li className="nav-item dropdown px-3">
+            <li className={`nav-item dropdown px-3 ${openDropdown === 'organization' ? 'show' : ''}`}>
               <a
                 className="nav-link dropdown-toggle w-100"
                 href="#"
                 id="organizationDropdown"
                 role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toggleDropdown('organization')
+                }}
+                aria-expanded={openDropdown === 'organization'}
                 style={{
                   color: '#1A1A1A',
                   fontWeight:
@@ -241,7 +257,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 Organisation Profile
               </a>
               <ul
-                className="dropdown-menu"
+                className={`dropdown-menu ${openDropdown === 'organization' ? 'show' : ''}`}
                 aria-labelledby="organizationDropdown"
               >
                 {role === 'Group Admin' && (
@@ -254,7 +270,7 @@ const Navbar: React.FC<NavbarProps> = ({
                           ? 'bold'
                           : 'normal',
                       }}
-                      onClick={handleLinkClick}
+                      onClick={closeDropdown}
                     >
                       <FaUserPlus style={{ marginRight: '5px' }} />
                       Add User
@@ -268,7 +284,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     style={{
                       fontWeight: isActive('/groupadmin') ? 'bold' : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <MdGroups style={{ marginRight: '5px' }} />
                     Group Admin
@@ -281,7 +297,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     style={{
                       fontWeight: isActive('/teamlead') ? 'bold' : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <FaUsers style={{ marginRight: '5px' }} />
                     Team Leader
@@ -294,7 +310,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     style={{
                       fontWeight: isActive('/fieldstaff') ? 'bold' : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <FaUserCog style={{ marginRight: '5px' }} />
                     Field Staff
@@ -304,14 +320,17 @@ const Navbar: React.FC<NavbarProps> = ({
             </li>
 
             {/* Volunteer */}
-            <li className="nav-item dropdown px-3">
+            <li className={`nav-item dropdown px-3 ${openDropdown === 'volunteer' ? 'show' : ''}`}>
               <a
                 className="nav-link dropdown-toggle"
                 href="#"
                 id="volunteerDropdown"
                 role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                onClick={(e) => {
+                  e.preventDefault()
+                  toggleDropdown('volunteer')
+                }}
+                aria-expanded={openDropdown === 'volunteer'}
                 style={{
                   color: '#1A1A1A',
                   fontWeight:
@@ -323,7 +342,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 <MdVolunteerActivism style={{ marginRight: '5px' }} />
                 Volunteer
               </a>
-              <ul className="dropdown-menu" aria-labelledby="volunteerDropdown">
+              <ul className={`dropdown-menu ${openDropdown === 'volunteer' ? 'show' : ''}`} aria-labelledby="volunteerDropdown">
                 <li>
                   <Link
                     to="/registervolunteer"
@@ -333,7 +352,7 @@ const Navbar: React.FC<NavbarProps> = ({
                         ? 'bold'
                         : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <BsPersonFillAdd style={{ marginRight: '5px' }} />
                     Add Volunteer
@@ -346,7 +365,7 @@ const Navbar: React.FC<NavbarProps> = ({
                     style={{
                       fontWeight: isActive('/volunteer') ? 'bold' : 'normal',
                     }}
-                    onClick={handleLinkClick}
+                    onClick={closeDropdown}
                   >
                     <MdVolunteerActivism style={{ marginRight: '5px' }} />
                     Volunteer

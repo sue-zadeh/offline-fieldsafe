@@ -1,7 +1,16 @@
 import React, { useState, useEffect, FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import axios, { AxiosError } from 'axios'
-import { Table, Form, Button, Alert, Card, Row, Col, ListGroup } from 'react-bootstrap'
+import {
+  Table,
+  Form,
+  Button,
+  Alert,
+  Card,
+  Row,
+  Col,
+  ListGroup,
+} from 'react-bootstrap'
 
 interface Objective {
   id: number
@@ -33,7 +42,7 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
 }) => {
   const navigate = useNavigate()
   const location = useLocation()
-  
+
   const [objectives, setObjectives] = useState<Objective[]>([])
   const [title, setTitle] = useState('')
   const [measurement, setMeasurement] = useState('')
@@ -41,25 +50,30 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
 
   // For editing an existing objective
   const [editObj, setEditObj] = useState<Objective | null>(null)
-  
+
   // For project objective selection
-  const [localSelectedObjectives, setLocalSelectedObjectives] = useState<number[]>([])
-  
-  // Sync localSelectedObjectives with prop changes and location state
+  const [localSelectedObjectives, setLocalSelectedObjectives] = useState<
+    number[]
+  >([])
+
+  // Initialize localSelectedObjectives only once when component mounts
   useEffect(() => {
     const projectData = projectFormData || location.state?.projectFormData
-    
+
     if (projectData && projectData.selectedObjectives) {
-      console.log('Initializing from project data:', projectData.selectedObjectives)
+      console.log(
+        '🎯 Initializing from project data:',
+        projectData.selectedObjectives
+      )
       setLocalSelectedObjectives(projectData.selectedObjectives)
     } else if (selectedObjectives && selectedObjectives.length > 0) {
-      console.log('Initializing from props:', selectedObjectives)
+      console.log('🎯 Initializing from props:', selectedObjectives)
       setLocalSelectedObjectives(selectedObjectives)
     } else {
-      console.log('Initializing with empty array')
+      console.log('🎯 Initializing with empty array')
       setLocalSelectedObjectives([])
     }
-  }, [selectedObjectives, projectFormData, location.state])
+  }, []) // Remove dependencies to prevent re-running
 
   useEffect(() => {
     fetchObjectives()
@@ -77,21 +91,17 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
 
   // Handle objective selection for project
   const toggleObjectiveSelection = (objId: number) => {
-    console.log('🔄 Toggling objective:', objId, 'Current selection:', localSelectedObjectives)
-    
-    setLocalSelectedObjectives(prev => {
+    setLocalSelectedObjectives((prev) => {
       const isSelected = prev.includes(objId)
-      const newSelection = isSelected 
-        ? prev.filter(id => id !== objId)
+      const newSelection = isSelected
+        ? prev.filter((id) => id !== objId)
         : [...prev, objId]
-      
-      console.log('✅ New selection:', newSelection)
-      
+
       // Update parent component if callback exists
       if (onObjectivesSelectionChange) {
         onObjectivesSelectionChange(newSelection)
       }
-      
+
       return newSelection
     })
   }
@@ -100,7 +110,9 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
   const handleProjectSave = async () => {
     const projectData = projectFormData || location.state?.projectFormData
     if (!projectData) {
-      setNotification('No project data found. Please return to project details.')
+      setNotification(
+        'No project data found. Please return to project details.'
+      )
       return
     }
 
@@ -116,15 +128,22 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
         formData.append('createdBy', adminId)
       }
       formData.append('emergencyServices', projectData.emergencyServices)
-      formData.append('localMedicalCenterAddress', projectData.localMedicalCenterAddress)
-      formData.append('localMedicalCenterPhone', projectData.localMedicalCenterPhone)
+      formData.append(
+        'localMedicalCenterAddress',
+        projectData.localMedicalCenterAddress
+      )
+      formData.append(
+        'localMedicalCenterPhone',
+        projectData.localMedicalCenterPhone
+      )
       formData.append('localHospital', projectData.localHospital)
       formData.append('primaryContactName', projectData.primaryContactName)
       formData.append('primaryContactPhone', projectData.primaryContactPhone)
       formData.append('objectives', JSON.stringify(localSelectedObjectives))
 
       if (projectData.imageFile) formData.append('image', projectData.imageFile)
-      if (projectData.inductionFile) formData.append('inductionFile', projectData.inductionFile)
+      if (projectData.inductionFile)
+        formData.append('inductionFile', projectData.inductionFile)
 
       if (projectData.isEdit && projectData.projectId) {
         // Update existing project
@@ -144,7 +163,10 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
       setTimeout(() => {
         navigate('/searchproject', {
           state: {
-            redirectTo: projectData.status === 'archived' ? 'archiveprojects' : 'activeprojects',
+            redirectTo:
+              projectData.status === 'archived'
+                ? 'archiveprojects'
+                : 'activeprojects',
           },
         })
       }, 1500)
@@ -163,7 +185,9 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
   const handleProjectSaveAsNew = async () => {
     const projectData = projectFormData || location.state?.projectFormData
     if (!projectData) {
-      setNotification('No project data found. Please return to project details.')
+      setNotification(
+        'No project data found. Please return to project details.'
+      )
       return
     }
 
@@ -179,15 +203,22 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
         formData.append('createdBy', adminId)
       }
       formData.append('emergencyServices', projectData.emergencyServices)
-      formData.append('localMedicalCenterAddress', projectData.localMedicalCenterAddress)
-      formData.append('localMedicalCenterPhone', projectData.localMedicalCenterPhone)
+      formData.append(
+        'localMedicalCenterAddress',
+        projectData.localMedicalCenterAddress
+      )
+      formData.append(
+        'localMedicalCenterPhone',
+        projectData.localMedicalCenterPhone
+      )
       formData.append('localHospital', projectData.localHospital)
       formData.append('primaryContactName', projectData.primaryContactName)
       formData.append('primaryContactPhone', projectData.primaryContactPhone)
       formData.append('objectives', JSON.stringify(localSelectedObjectives))
 
       if (projectData.imageFile) formData.append('image', projectData.imageFile)
-      if (projectData.inductionFile) formData.append('inductionFile', projectData.inductionFile)
+      if (projectData.inductionFile)
+        formData.append('inductionFile', projectData.inductionFile)
 
       await axios.post('/api/projects', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -215,8 +246,8 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
   // Get project data for display
   const projectData = projectFormData || location.state?.projectFormData
   const selectedObjectivesText = objectives
-    .filter(obj => localSelectedObjectives.includes(obj.id))
-    .map(o => `${o.title} (${o.measurement})`)
+    .filter((obj) => localSelectedObjectives.includes(obj.id))
+    .map((o) => `${o.title} (${o.measurement})`)
     .join(', ')
 
   // auto-clear notification
@@ -333,18 +364,29 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
           <Card className="border-primary">
             <Card.Header style={{ backgroundColor: '#0094B6', color: 'white' }}>
               <h4 className="mb-0">
-                {projectData.isEdit ? 'Edit Project:' : 'Create Project:'} {projectData.name}
+                {projectData.isEdit ? 'Edit Project:' : 'Create Project:'}{' '}
+                {projectData.name}
               </h4>
             </Card.Header>
             <Card.Body>
               <Row>
                 <Col md={8}>
-                  <p><strong>Location:</strong> {projectData.location}</p>
-                  <p><strong>Start Date:</strong> {projectData.startDate}</p>
-                  <p><strong>Primary Contact:</strong> {projectData.primaryContactName} ({projectData.primaryContactPhone})</p>
+                  <p>
+                    <strong>Location:</strong> {projectData.location}
+                  </p>
+                  <p>
+                    <strong>Start Date:</strong> {projectData.startDate}
+                  </p>
+                  <p>
+                    <strong>Primary Contact:</strong>{' '}
+                    {projectData.primaryContactName} (
+                    {projectData.primaryContactPhone})
+                  </p>
                 </Col>
                 <Col md={4}>
-                  <p><strong>Status:</strong> {projectData.status}</p>
+                  <p>
+                    <strong>Status:</strong> {projectData.status}
+                  </p>
                 </Col>
               </Row>
             </Card.Body>
@@ -383,11 +425,27 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
         {/* Left: Project Objective Selection - Only show if in project mode */}
         {projectData && (
           <Col xs={12} md={4}>
-            <Card className="border-0 h-100" style={{ backgroundColor: '#f8f9fa' }}>
-              <Card.Header className="border-0" style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}>
+            <Card
+              className="border-0 h-100"
+              style={{ backgroundColor: '#f8f9fa' }}
+            >
+              <Card.Header
+                className="border-0"
+                style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}
+              >
                 <div className="text-center">
-                  <small className="fw-bold d-block" style={{ fontSize: '0.75rem', color: '#495057' }}>📋 Select Project</small>
-                  <small className="fw-bold" style={{ fontSize: '0.75rem', color: '#495057' }}>Objectives</small>
+                  <small
+                    className="fw-bold d-block"
+                    style={{ fontSize: '0.75rem', color: '#495057' }}
+                  >
+                    📋 Select Project
+                  </small>
+                  <small
+                    className="fw-bold"
+                    style={{ fontSize: '0.75rem', color: '#495057' }}
+                  >
+                    Objectives
+                  </small>
                 </div>
               </Card.Header>
               <Card.Body>
@@ -398,7 +456,9 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                       No objectives available. Create some first.
                     </Alert>
                   ) : (
-                    <ListGroup style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    <ListGroup
+                      style={{ maxHeight: '300px', overflowY: 'auto' }}
+                    >
                       {objectives.map((obj) => (
                         <ListGroup.Item
                           key={obj.id}
@@ -407,7 +467,6 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            console.log('🔍 Clicked objective:', obj.id, obj.title)
                             toggleObjectiveSelection(obj.id)
                           }}
                           className="d-flex justify-content-between align-items-center"
@@ -416,7 +475,7 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                             fontSize: '0.9em',
                             padding: '0.75rem',
                             border: '1px solid #dee2e6',
-                            marginBottom: '2px'
+                            marginBottom: '2px',
                           }}
                         >
                           {obj.title} ({obj.measurement})
@@ -425,20 +484,22 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                     </ListGroup>
                   )}
                 </Form.Group>
-                
+
                 <div className="mb-3">
                   <Form.Label>Selected Summary:</Form.Label>
-                  <div style={{ 
-                    backgroundColor: '#e9ecef', 
-                    padding: '10px', 
-                    borderRadius: '4px',
-                    minHeight: '50px',
-                    fontSize: '0.9em'
-                  }}>
+                  <div
+                    style={{
+                      backgroundColor: '#e9ecef',
+                      padding: '10px',
+                      borderRadius: '4px',
+                      minHeight: '50px',
+                      fontSize: '0.9em',
+                    }}
+                  >
                     {selectedObjectivesText || <em>None selected</em>}
                   </div>
                 </div>
-                
+
                 {/* Project Action Buttons */}
                 <div className="d-flex flex-column gap-2">
                   {projectData.isEdit ? (
@@ -472,10 +533,11 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                       // Navigate back with current project data and selected objectives
                       navigate('/addproject', {
                         state: {
-                          projectFormData: projectFormData || location.state?.projectFormData,
+                          projectFormData:
+                            projectFormData || location.state?.projectFormData,
                           selectedObjectives: localSelectedObjectives,
-                          activeTab: 'details'
-                        }
+                          activeTab: 'details',
+                        },
                       })
                     }}
                   >
@@ -489,11 +551,27 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
 
         {/* Middle: Add New Objective Form */}
         <Col xs={12} md={projectData ? 4 : 6}>
-          <Card className="border-0 h-100" style={{ backgroundColor: '#f8f9fa' }}>
-            <Card.Header className="border-0" style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}>
+          <Card
+            className="border-0 h-100"
+            style={{ backgroundColor: '#f8f9fa' }}
+          >
+            <Card.Header
+              className="border-0"
+              style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}
+            >
               <div className="text-center">
-                <small className="fw-bold d-block" style={{ fontSize: '0.75rem', color: '#495057' }}>➕ Create New</small>
-                <small className="fw-bold" style={{ fontSize: '0.75rem', color: '#495057' }}>Objective</small>
+                <small
+                  className="fw-bold d-block"
+                  style={{ fontSize: '0.75rem', color: '#495057' }}
+                >
+                  ➕ Create New
+                </small>
+                <small
+                  className="fw-bold"
+                  style={{ fontSize: '0.75rem', color: '#495057' }}
+                >
+                  Objective
+                </small>
               </div>
             </Card.Header>
             <Card.Body>
@@ -535,11 +613,27 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
 
         {/* Right: Objectives Management */}
         <Col xs={12} md={projectData ? 4 : 6}>
-          <Card className="border-0 h-100" style={{ backgroundColor: '#f8f9fa' }}>
-            <Card.Header className="border-0" style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}>
+          <Card
+            className="border-0 h-100"
+            style={{ backgroundColor: '#f8f9fa' }}
+          >
+            <Card.Header
+              className="border-0"
+              style={{ backgroundColor: '#e9ecef', padding: '0.5rem' }}
+            >
               <div className="text-center">
-                <small className="fw-bold d-block" style={{ fontSize: '0.75rem', color: '#495057' }}>📝 Manage</small>
-                <small className="fw-bold" style={{ fontSize: '0.75rem', color: '#495057' }}>Objectives</small>
+                <small
+                  className="fw-bold d-block"
+                  style={{ fontSize: '0.75rem', color: '#495057' }}
+                >
+                  📝 Manage
+                </small>
+                <small
+                  className="fw-bold"
+                  style={{ fontSize: '0.75rem', color: '#495057' }}
+                >
+                  Objectives
+                </small>
               </div>
             </Card.Header>
             <Card.Body style={{ padding: '0.5rem' }}>
@@ -548,7 +642,10 @@ const AddObjectives: React.FC<AddObjectivesProps> = ({
                   No objectives created yet.
                 </p>
               ) : (
-                <div className="table-responsive" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                <div
+                  className="table-responsive"
+                  style={{ maxHeight: '500px', overflowY: 'auto' }}
+                >
                   <Table bordered hover striped size="sm" className="mb-0">
                     <thead style={{ backgroundColor: '#e9ecef' }}>
                       <tr>
