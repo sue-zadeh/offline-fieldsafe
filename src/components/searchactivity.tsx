@@ -53,46 +53,71 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
     ;(async () => {
       try {
         setLoading(true)
-        let activities: ActivityRow[] = []
+        let serverActivities: ActivityRow[] = []
+        let cachedActivities: ActivityRow[] = []
+        let offlineActivities: ActivityRow[] = []
         
-        if (navigator.onLine) {
-          console.log('🔄 Fetching activities from API...')
-          const res = await axios.get<ActivityRow[]>('/api/activities')
-          activities = res.data
-          console.log('✅ Fetched activities from API:', activities.length)
+        // Always get cached activities (activities from previous online sessions)
+        const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+        cachedActivities = await getCachedActivities()
+        console.log('📦 Cached activities found:', cachedActivities.length)
 
-          const { cacheActivities } = await import('../utils/localDB')
-          await cacheActivities(activities)
-        } else {
-          console.log('📱 Offline mode - loading from cache...')
-          const { getCachedActivities } = await import('../utils/localDB')
-          activities = await getCachedActivities()
-          console.log('✅ Loaded activities from cache:', activities.length)
-        }
-
-        const { getSyncedItems, getUnsyncedItems } = await import(
-          '../utils/localDB'
-        )
+        // Get offline activities (created/modified while offline)
         const synced = await getSyncedItems()
         const unsynced = await getUnsyncedItems()
-        const offline = [...synced, ...unsynced]
+        offlineActivities = [...synced, ...unsynced]
           .filter((i) => i.type === 'activity')
           .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
+        console.log('📱 Offline activities found:', offlineActivities.length)
 
-        console.log('📦 Offline activities found:', offline.length)
-        activities = [...activities, ...offline]
+        if (navigator.onLine) {
+          try {
+            console.log('🔄 Fetching activities from API...')
+            const res = await axios.get<ActivityRow[]>('/api/activities')
+            serverActivities = res.data
+            console.log('✅ Fetched activities from API:', serverActivities.length)
+
+            // Cache the fresh server data
+            const { cacheActivities } = await import('../utils/localDB')
+            await cacheActivities(serverActivities)
+          } catch (apiErr) {
+            console.warn('⚠️ API fetch failed, using cached data:', apiErr)
+            // Use cached activities as fallback
+            serverActivities = cachedActivities
+          }
+        } else {
+          console.log('📱 Offline mode - using cached activities')
+          // In offline mode, use cached activities as "server" activities
+          serverActivities = cachedActivities
+        }
+
+        // Merge activities: server/cached activities + offline activities
+        // Remove duplicates by preferring offline activities over cached ones
+        const activityMap = new Map<number, ActivityRow>()
         
-        console.log('📊 Total activities to display:', activities.length)
-        setAllActivities(activities)
-      } catch (err) {
-        console.error('❌ Error fetching activities:', err)
-        setError('Failed to load activity notes.')
+        // First add all server/cached activities
+        serverActivities.forEach(activity => {
+          activityMap.set(activity.id, activity)
+        })
+        
+        // Then add offline activities, which will override any duplicates
+        offlineActivities.forEach(activity => {
+          const id = activity.id || activity.timestamp
+          if (id) {
+            activityMap.set(id, activity)
+          }
+        })
 
-        // Fallback to cached data
-        console.log('🔄 Falling back to cached data...')
+        const finalActivities = Array.from(activityMap.values())
+        console.log('📊 Total unique activities:', finalActivities.length)
+        setAllActivities(finalActivities)
+      } catch (err) {
+        console.error('❌ Error loading activities:', err)
+        setError('Failed to load activities.')
+
+        // Ultimate fallback: just show whatever we can find locally
         try {
-          const { getCachedActivities, getSyncedItems, getUnsyncedItems } =
-            await import('../utils/localDB')
+          const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
           const cached = await getCachedActivities()
           const synced = await getSyncedItems()
           const unsynced = await getUnsyncedItems()
@@ -100,11 +125,19 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             .filter((i) => i.type === 'activity')
             .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
 
-          const merged = [...cached, ...offline]
-          console.log('📦 Fallback activities loaded:', merged.length)
-          setAllActivities(merged)
+          const activityMap = new Map<number, ActivityRow>()
+          cached.forEach(activity => activityMap.set(activity.id, activity))
+          offline.forEach(activity => {
+            const id = activity.id || activity.timestamp
+            if (id) activityMap.set(id, activity)
+          })
+
+          const fallbackActivities = Array.from(activityMap.values())
+          console.log('📦 Fallback activities loaded:', fallbackActivities.length)
+          setAllActivities(fallbackActivities)
         } catch (cacheErr) {
-          console.error('Error loading cached activities:', cacheErr)
+          console.error('❌ Critical error loading any activities:', cacheErr)
+          setAllActivities([])
         }
       } finally {
         setLoading(false)

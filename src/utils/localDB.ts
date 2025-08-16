@@ -170,10 +170,13 @@ export const deleteOfflineItem = async (id: number) => {
 
 export const replayQueue = async () => {
   const unsynced = await getUnsyncedItems()
+  console.log(`🔄 Starting sync for ${unsynced.length} unsynced items`)
+  
   for (const item of unsynced) {
     try {
       let endpoint: string
       let method = 'POST'
+      let requestBody = item.data
       
       if (item.type === 'volunteer') {
         endpoint = '/api/volunteers'
@@ -182,6 +185,7 @@ export const replayQueue = async () => {
       } else if (item.type === 'volunteer_delete') {
         endpoint = `/api/volunteers/${item.data.id}`
         method = 'DELETE'
+        requestBody = undefined
       } else if (item.type === 'activity_volunteer_assignment') {
         endpoint = '/api/activity_volunteer'
       } else if (item.type === 'activity_staff_assignment') {
@@ -193,15 +197,17 @@ export const replayQueue = async () => {
         if (item.data.hazard_type === 'site') {
           endpoint = '/api/activity_site_hazards'
           // Map hazard_id to site_hazard_id
-          item.data.site_hazard_id = item.data.hazard_id
-          delete item.data.hazard_id
-          delete item.data.hazard_type
+          requestBody = { ...item.data }
+          requestBody.site_hazard_id = requestBody.hazard_id
+          delete requestBody.hazard_id
+          delete requestBody.hazard_type
         } else {
           endpoint = '/api/activity_activity_people_hazards'
           // Map hazard_id to activity_people_hazard_id
-          item.data.activity_people_hazard_id = item.data.hazard_id
-          delete item.data.hazard_id
-          delete item.data.hazard_type
+          requestBody = { ...item.data }
+          requestBody.activity_people_hazard_id = requestBody.hazard_id
+          delete requestBody.hazard_id
+          delete requestBody.hazard_type
         }
       } else if (item.type === 'activity_checklist_assignment') {
         endpoint = '/api/activity_checklist'
@@ -215,33 +221,59 @@ export const replayQueue = async () => {
       } else if (item.type === 'activity_predator') {
         endpoint = '/api/activity_predator'
       } else {
+        console.warn(`⚠️ Unknown sync type: ${item.type}`)
         continue
       }
+
+      console.log(`🔄 Syncing ${item.type} to ${endpoint}`)
 
       const res = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: method === 'POST' ? JSON.stringify(item.data) : undefined,
+        body: method !== 'GET' && requestBody ? JSON.stringify(requestBody) : undefined,
       })
 
       if (res.ok) {
         await markItemSynced(item.id)
+        
+        // Cache the response data for some types
         if (item.type === 'volunteer') {
-          const data = await res.json()
-          await cacheVolunteers([data])
+          try {
+            const data = await res.json()
+            if (data && data.id) {
+              await cacheVolunteers([data])
+            }
+          } catch (e) {
+            console.warn('Could not cache volunteer response:', e)
+          }
         }
         if (item.type === 'activity') {
-          const data = await res.json()
-          await cacheActivities([data])
+          try {
+            const data = await res.json()
+            if (data && (data.activityId || data.id)) {
+              // Server returns { activityId: xxx, message: ... } for new activities
+              const activityForCache = { 
+                ...requestBody, 
+                id: data.activityId || data.id 
+              }
+              await cacheActivity(activityForCache)
+            }
+          } catch (e) {
+            console.warn('Could not cache activity response:', e)
+          }
         }
-        console.log(`✅ Synced ${item.type} item`)
+        
+        console.log(`✅ Synced ${item.type} item successfully`)
       } else {
-        console.warn(`❌ Failed to sync ${item.type} item: ${res.status}`)
+        const errorText = await res.text().catch(() => 'Unknown error')
+        console.warn(`❌ Failed to sync ${item.type} item: ${res.status} - ${errorText}`)
       }
     } catch (err) {
       console.warn(`❌ Sync failed for ${item.type}:`, err)
     }
   }
+  
+  console.log('🔄 Sync queue replay completed')
 }
 
 export const queueVolunteerUpdate = (user: User) => {
