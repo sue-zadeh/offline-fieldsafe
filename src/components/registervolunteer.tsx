@@ -69,13 +69,19 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
     }
 
     // Validate firstname and lastname (no numbers or special chars)
-    if (!/^[a-zA-Z\s]+$/.test(firstname.trim()) || firstname.trim().length < 2) {
+    if (
+      !/^[a-zA-Z\s]+$/.test(firstname.trim()) ||
+      firstname.trim().length < 2
+    ) {
       return 'First name must contain only letters and be at least 2 characters long.'
     }
     if (!/^[a-zA-Z\s]+$/.test(lastname.trim()) || lastname.trim().length < 2) {
       return 'Last name must contain only letters and be at least 2 characters long.'
     }
-    if (!/^[a-zA-Z\s]+$/.test(emergencyContact.trim()) || emergencyContact.trim().length < 2) {
+    if (
+      !/^[a-zA-Z\s]+$/.test(emergencyContact.trim()) ||
+      emergencyContact.trim().length < 2
+    ) {
       return 'Emergency contact name must contain only letters and be at least 2 characters long.'
     }
 
@@ -93,8 +99,13 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
     }
 
     // Emergency contact phone validation
-    const cleanEmergencyPhone = emergencyContactNumber.trim().replace(/[\s\-()]/g, '')
-    if (!phoneRegex.test(emergencyContactNumber.trim()) || cleanEmergencyPhone.length < 7) {
+    const cleanEmergencyPhone = emergencyContactNumber
+      .trim()
+      .replace(/[\s\-()]/g, '')
+    if (
+      !phoneRegex.test(emergencyContactNumber.trim()) ||
+      cleanEmergencyPhone.length < 7
+    ) {
       return 'Emergency contact number must contain only digits, spaces, +, -, (, ) and be at least 7 digits long.'
     }
 
@@ -108,12 +119,16 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
       /undefined/i,
       /test/i,
       /example/i,
-      /[a-zA-Z]{3,}/i // Any word with 3+ letters
+      /[a-zA-Z]{3,}/i, // Any word with 3+ letters
     ]
-    if (invalidPhonePatterns.some(pattern => pattern.test(phone.trim()))) {
+    if (invalidPhonePatterns.some((pattern) => pattern.test(phone.trim()))) {
       return 'Please enter a valid phone number, not text or placeholder values.'
     }
-    if (invalidPhonePatterns.some(pattern => pattern.test(emergencyContactNumber.trim()))) {
+    if (
+      invalidPhonePatterns.some((pattern) =>
+        pattern.test(emergencyContactNumber.trim())
+      )
+    ) {
       return 'Please enter a valid emergency contact number, not text or placeholder values.'
     }
 
@@ -124,50 +139,40 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target
-    
+
     // Clear previous notifications when user starts typing
     if (notification) {
       setNotification(null)
     }
-    
+
     let processedValue = value
-    
+
     // Real-time validation and processing
     if (name === 'email') {
       processedValue = value.trim().toLowerCase()
     } else if (name === 'phone' || name === 'emergencyContactNumber') {
       // Allow only valid phone characters as user types
       processedValue = value.replace(/[^0-9\s+\-()]/g, '')
-    } else if (name === 'firstname' || name === 'lastname' || name === 'emergencyContact') {
+    } else if (
+      name === 'firstname' ||
+      name === 'lastname' ||
+      name === 'emergencyContact'
+    ) {
       // Allow only letters and spaces, remove numbers and special chars
       processedValue = value.replace(/[^a-zA-Z\s]/g, '')
     }
-    
+
     setFormData({ ...formData, [name]: processedValue })
-    
-    // Real-time validation feedback
-    if (name === 'email' && processedValue) {
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-      if (!emailRegex.test(processedValue)) {
-        setNotification('Please enter a valid email address.')
-        setTimeout(() => setNotification(null), 2000)
-      }
-    }
-    
-    if ((name === 'phone' || name === 'emergencyContactNumber') && processedValue) {
-      const cleanPhone = processedValue.replace(/[\s\-()]/g, '')
-      const invalidPatterns = [/no\s?thanks?/i, /none?/i, /n\/a/i, /[a-zA-Z]{3,}/i]
-      if (invalidPatterns.some(pattern => pattern.test(processedValue))) {
-        setNotification('Please enter a valid phone number, not text.')
-        setTimeout(() => setNotification(null), 2000)
-      } else if (cleanPhone.length > 0 && cleanPhone.length < 7) {
-        setNotification('Phone number must be at least 7 digits long.')
-        setTimeout(() => setNotification(null), 2000)
-      }
-    }
+
+    // Note: Real-time email validation removed - only validate on form submission
+
+    // Note: Real-time phone validation removed - only validate on form submission
   }
 
   const handleSubmit = async () => {
+    // Add debugging information
+    console.log('🔍 Form submission started with data:', formData)
+    
     // Trim all fields before validation
     const trimmedFormData = {
       ...formData,
@@ -176,12 +181,14 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
       email: formData.email.trim().toLowerCase(),
       phone: formData.phone.trim(),
       emergencyContact: formData.emergencyContact.trim(),
-      emergencyContactNumber: formData.emergencyContactNumber.trim()
+      emergencyContactNumber: formData.emergencyContactNumber.trim(),
     }
-    
+
+    console.log('🔍 Trimmed form data:', trimmedFormData)
+
     // Update form data with trimmed values
     setFormData(trimmedFormData)
-    
+
     // Validate form with trimmed data
     const validationError = validateForm()
     if (validationError) {
@@ -192,7 +199,9 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
     // Additional client-side checks
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
     if (!emailRegex.test(trimmedFormData.email)) {
-      setNotification('Invalid email format detected. Please enter a valid email.')
+      setNotification(
+        'Invalid email format detected. Please enter a valid email.'
+      )
       return
     }
 
@@ -206,7 +215,8 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
 
     // Check email uniqueness
     const isEmailTaken = users.some(
-      (user) => user.email === trimmedFormData.email && user.id !== trimmedFormData.id
+      (user) =>
+        user.email === trimmedFormData.email && user.id !== trimmedFormData.id
     )
     if (isEmailTaken) {
       setNotification('The email address is already in use.')
@@ -218,9 +228,9 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
         ...trimmedFormData,
         // Additional validation flags for server
         clientValidated: true,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }
-      
+
       if (navigator.onLine) {
         if (formData.id) {
           await axios.put(`/api/volunteers/${formData.id}`, dataToSubmit)
@@ -233,18 +243,32 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
         }
       } else {
         const item: Omit<OfflineItem, 'id'> = {
-        type: 'volunteer',
-        data: { ...dataToSubmit, id: 0 },
-        synced: false,
-        timestamp: Date.now(),
-      }
+          type: 'volunteer',
+          data: { ...dataToSubmit, id: 0 },
+          synced: false,
+          timestamp: Date.now(),
+        }
         await saveOfflineItem(item)
         setNotification('🕸️ You are offline. Data saved locally for sync.')
       }
       setTimeout(() => navigate('/volunteer'), 1000)
-    } catch (error) {
-      console.error('❌ Unexpected error saving user:', error)
-      setNotification('Failed to save user.')
+    } catch (error: any) {
+      console.error('❌ Error saving user:', error)
+      
+      // Better error handling with specific messages
+      if (error.response?.data?.message) {
+        setNotification(error.response.data.message)
+      } else if (error.response?.status === 400) {
+        setNotification('Invalid data provided. Please check your inputs and try again.')
+      } else if (error.response?.status === 409) {
+        setNotification('Email already exists. Please use a different email address.')
+      } else if (error.response?.status >= 500) {
+        setNotification('Server error. Please try again later.')
+      } else if (error.message) {
+        setNotification(`Error: ${error.message}`)
+      } else {
+        setNotification('Failed to save volunteer. Please check your data and try again.')
+      }
     }
   }
 
@@ -270,7 +294,10 @@ const Addvolunteer: React.FC<AddvolunteerProps> = ({ isSidebarOpen }) => {
         {notification && (
           <div className="alert alert-primary text-center">{notification}</div>
         )}
-        <form className="form-container bg-white p-4 rounded shadow" noValidate={false}>
+        <form
+          className="form-container bg-white p-4 rounded shadow"
+          noValidate={false}
+        >
           <div className="row">
             <div className="col-md-6 mb-3">
               <label>First Name</label>

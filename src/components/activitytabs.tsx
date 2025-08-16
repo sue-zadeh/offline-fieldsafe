@@ -65,9 +65,37 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
         setSelectedProjectName(data.projectName || '')
         await cacheActivity(data) // cache for offline
       } else {
-        const offline = await getCachedActivity(id)
+        // First try cached activities (from server)
+        let offline = await getCachedActivity(id)
+        
+        // If not found in cache, check offline queue
+        if (!offline) {
+          try {
+            const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+            const synced = await getSyncedItems()
+            const unsynced = await getUnsyncedItems()
+            const allOfflineItems = [...synced, ...unsynced]
+              .filter((i) => i.type === 'activity')
+              .map((i) => i.data)
+
+            // Check both id and timestamp fields for offline activities
+            offline = allOfflineItems.find((a) => 
+              a.id === id || 
+              a.timestamp === id ||
+              (typeof a.id === 'string' && a.id.includes(id.toString()))
+            )
+            
+            if (offline) {
+              // Cache the offline activity for future access
+              await cacheActivity(offline)
+            }
+          } catch (err) {
+            console.error('Error checking offline activity queue:', err)
+          }
+        }
+        
         if (offline) {
-          setSelectedActivityId(offline.id)
+          setSelectedActivityId(offline.id || offline.timestamp || id)
           setSelectedActivityName(
             offline.activity_name || offline.title || 'Offline Activity'
           )
@@ -82,16 +110,37 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
       }
     } catch (err) {
       if (!navigator.onLine) {
-        const offline = await getCachedActivity(id)
-        if (offline) {
-          setSelectedActivityId(offline.id)
-          setSelectedActivityName(
-            offline.activity_name || offline.title || 'Offline Activity'
+        // Offline fallback - try to find in offline queue
+        try {
+          const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+          const synced = await getSyncedItems()
+          const unsynced = await getUnsyncedItems()
+          const allOfflineItems = [...synced, ...unsynced]
+            .filter((i) => i.type === 'activity')
+            .map((i) => i.data)
+
+          const offline = allOfflineItems.find((a) => 
+            a.id === id || 
+            a.timestamp === id ||
+            (typeof a.id === 'string' && a.id.includes(id.toString()))
           )
-          setSelectedProjectName(offline.projectName || 'Offline Project')
-        } else {
-          console.warn('⚠️ Activity not found in cache during offline mode:', id)
-          // Show a more user-friendly message or just handle silently
+          
+          if (offline) {
+            setSelectedActivityId(offline.id || offline.timestamp || id)
+            setSelectedActivityName(
+              offline.activity_name || offline.title || 'Offline Activity'
+            )
+            setSelectedProjectName(offline.projectName || 'Offline Project')
+            // Cache for future access
+            await cacheActivity(offline)
+          } else {
+            console.warn('⚠️ Activity not found in offline mode:', id)
+            setSelectedActivityId(null)
+            setSelectedActivityName('')
+            setSelectedProjectName('')
+          }
+        } catch (offlineErr) {
+          console.error('❌ Failed to load activity details (offline)', offlineErr)
           setSelectedActivityId(null)
           setSelectedActivityName('')
           setSelectedProjectName('')

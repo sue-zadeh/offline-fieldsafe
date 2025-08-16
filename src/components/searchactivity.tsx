@@ -24,6 +24,7 @@ interface ActivityRow {
   projectLocation: string
   status: string // e.g. "InProgress", "onhold", "Completed", "archived"
   createdBy?: string
+  timestamp?: number // For activities created offline
 }
 
 interface SearchActivityProps {
@@ -176,12 +177,12 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
       // Offline: check multiple sources for activity data
       let activityFound = false
 
-      // First check cached activities
+      // First check cached activities (activities that were fetched from server before)
       const cachedActivity = await getCachedActivity(act.id)
       if (cachedActivity) {
         activityFound = true
       } else {
-        // Check offline queue for the activity
+        // Check offline queue for activities (both synced and unsynced)
         try {
           const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
           const synced = await getSyncedItems()
@@ -190,9 +191,16 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             .filter((i) => i.type === 'activity')
             .map((i) => i.data)
 
-          const offlineActivity = allOfflineItems.find((a) => a.id === act.id)
+          // Check both id and timestamp fields for offline activities
+          const offlineActivity = allOfflineItems.find((a) => 
+            a.id === act.id || 
+            a.timestamp === act.id || 
+            (act.timestamp && a.timestamp === act.timestamp)
+          )
           if (offlineActivity) {
             activityFound = true
+            // Cache the activity for future offline access
+            await cacheActivity(offlineActivity)
           }
         } catch (err) {
           console.error('Error checking offline queue:', err)

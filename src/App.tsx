@@ -60,12 +60,12 @@ const App: React.FC = () => {
   useEffect(() => {
     window.addEventListener('online', replayQueue)
     replayQueue()
-    
+
     // Preload data when online
     if (navigator.onLine) {
       preloadDataForOffline()
     }
-    
+
     return () => window.removeEventListener('online', replayQueue)
   }, [])
 

@@ -88,14 +88,14 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target
-    
+
     // Clear previous notifications when user starts typing
     if (notification) {
       setNotification(null)
     }
-    
+
     let processedValue = value
-    
+
     // Real-time validation and processing
     if (name === 'email') {
       processedValue = value.trim().toLowerCase()
@@ -106,29 +106,12 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
       // Allow only letters and spaces, remove numbers and special chars
       processedValue = value.replace(/[^a-zA-Z\s]/g, '')
     }
-    
+
     setFormData({ ...formData, [name]: processedValue })
-    
-    // Real-time validation feedback
-    if (name === 'email' && processedValue) {
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-      if (!emailRegex.test(processedValue)) {
-        setNotification('Please enter a valid email address.')
-        setTimeout(() => setNotification(null), 2000)
-      }
-    }
-    
-    if (name === 'phone' && processedValue) {
-      const cleanPhone = processedValue.replace(/[\s\-()]/g, '')
-      const invalidPatterns = [/no\s?thanks?/i, /none?/i, /n\/a/i, /[a-zA-Z]{3,}/i]
-      if (invalidPatterns.some(pattern => pattern.test(processedValue))) {
-        setNotification('Please enter a valid phone number, not text.')
-        setTimeout(() => setNotification(null), 2000)
-      } else if (cleanPhone.length > 0 && cleanPhone.length < 7) {
-        setNotification('Phone number must be at least 7 digits long.')
-        setTimeout(() => setNotification(null), 2000)
-      }
-    }
+
+    // Note: Real-time email validation removed - only validate on form submission
+
+    // Note: Real-time phone validation removed - only validate on form submission
   }
 
   // Prevent form submission with Enter key if validation fails
@@ -178,7 +161,10 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
     }
 
     // Validate firstname and lastname (no numbers or special chars)
-    if (!/^[a-zA-Z\s]+$/.test(firstname.trim()) || firstname.trim().length < 2) {
+    if (
+      !/^[a-zA-Z\s]+$/.test(firstname.trim()) ||
+      firstname.trim().length < 2
+    ) {
       return 'First name must contain only letters and be at least 2 characters long.'
     }
     if (!/^[a-zA-Z\s]+$/.test(lastname.trim()) || lastname.trim().length < 2) {
@@ -191,14 +177,14 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
       return 'Please enter a valid email address (e.g. user@example.com).'
     }
 
-    // Strict phone validation - only digits, spaces, +, -, (, )
+    // Phone validation - allow international format with + prefix
     const phoneRegex = /^[\d\s+\-()]+$/
-    const cleanPhone = phone.trim().replace(/[\s\-()]/g, '')
-    if (!phoneRegex.test(phone.trim()) || cleanPhone.length < 7) {
-      return 'Phone number must contain only digits, spaces, +, -, (, ) and be at least 7 digits long.'
+    const cleanPhone = phone.trim().replace(/[\s\-()]/g, '').replace(/^\+/, '')
+    if (!phoneRegex.test(phone.trim()) || cleanPhone.length < 7 || cleanPhone.length > 15) {
+      return 'Phone number must contain only digits, spaces, +, -, (, ) and be 7-15 digits long.'
     }
 
-    // Check for common invalid phone entries
+    // Check for common invalid phone entries (but be less restrictive)
     const invalidPhonePatterns = [
       /no\s?thanks?/i,
       /none?/i,
@@ -208,9 +194,8 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
       /undefined/i,
       /test/i,
       /example/i,
-      /[a-zA-Z]{3,}/i // Any word with 3+ letters
     ]
-    if (invalidPhonePatterns.some(pattern => pattern.test(phone.trim()))) {
+    if (invalidPhonePatterns.some((pattern) => pattern.test(phone.trim()))) {
       return 'Please enter a valid phone number, not text or placeholder values.'
     }
 
@@ -275,24 +260,24 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     e.stopPropagation() // Prevent event bubbling
-    
+
     // Prevent form submission if user tries to bypass validation
     if (isLoading) {
       return // Prevent double submission
     }
-    
+
     // Trim all fields before validation
     const trimmedFormData = {
       ...formData,
       firstname: formData.firstname.trim(),
       lastname: formData.lastname.trim(),
       email: formData.email.trim().toLowerCase(),
-      phone: formData.phone.trim()
+      phone: formData.phone.trim(),
     }
-    
+
     // Update form data with trimmed values
     setFormData(trimmedFormData)
-    
+
     // CRITICAL: Always validate on submit, regardless of HTML5 validation
     const errorMsg = validateForm()
     if (errorMsg) {
@@ -307,27 +292,44 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
     // Additional client-side checks before sending to server
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
     if (!emailRegex.test(trimmedFormData.email)) {
-      setNotification('Invalid email format detected. Please enter a valid email.')
+      setNotification(
+        'Invalid email format detected. Please enter a valid email.'
+      )
       setIsLoading(false)
       return false
     }
-    
+
     // Additional phone validation to catch bypass attempts
     const phoneRegex = /^[\d\s+\-()]+$/
-    const cleanPhone = trimmedFormData.phone.replace(/[\s\-()]/g, '')
-    if (!phoneRegex.test(trimmedFormData.phone) || cleanPhone.length < 7) {
-      setNotification('Invalid phone number detected. Please enter a valid phone number.')
+    const cleanPhone = trimmedFormData.phone.replace(/[\s\-()]/g, '').replace(/^\+/, '')
+    if (!phoneRegex.test(trimmedFormData.phone) || cleanPhone.length < 7 || cleanPhone.length > 15) {
+      setNotification(
+        'Invalid phone number detected. Please enter a valid phone number (7-15 digits).'
+      )
       setIsLoading(false)
       return false
     }
-    
+
     // Check for invalid text in phone field
     const invalidPhonePatterns = [
-      /no\s?thanks?/i, /none?/i, /n\/a/i, /not?\s?applicable/i, /null/i, 
-      /undefined/i, /test/i, /example/i, /[a-zA-Z]{3,}/i
+      /no\s?thanks?/i,
+      /none?/i,
+      /n\/a/i,
+      /not?\s?applicable/i,
+      /null/i,
+      /undefined/i,
+      /test/i,
+      /example/i,
+      /[a-zA-Z]{3,}/i,
     ]
-    if (invalidPhonePatterns.some(pattern => pattern.test(trimmedFormData.phone))) {
-      setNotification('Please enter a valid phone number, not text or placeholder values.')
+    if (
+      invalidPhonePatterns.some((pattern) =>
+        pattern.test(trimmedFormData.phone)
+      )
+    ) {
+      setNotification(
+        'Please enter a valid phone number, not text or placeholder values.'
+      )
       setIsLoading(false)
       return false
     }
@@ -350,7 +352,7 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
         ...trimmedFormData,
         // Additional server-side validation flags
         clientValidated: true,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }
 
       // If editing => PUT
@@ -401,18 +403,18 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
           navigate('/teamlead')
         }
       }, 1500)
-      
+
       return true // Success
     } catch (err: any) {
       console.error('Error saving staff:', err)
       let errorMessage = 'Failed to save staff.'
-      
+
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message
       } else if (err.response?.status === 400) {
         errorMessage = 'Invalid data provided. Please check all fields.'
       }
-      
+
       setNotification(errorMessage)
       setIsSendingEmail(false)
       setIsLoading(false)
@@ -470,7 +472,9 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                         }
                         onInvalid={(e) => {
                           e.preventDefault()
-                          setNotification('Please enter a valid first name (letters only, minimum 2 characters)')
+                          setNotification(
+                            'Please enter a valid first name (letters only, minimum 2 characters)'
+                          )
                         }}
                         placeholder="Enter first name"
                         required
@@ -500,7 +504,9 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                         }
                         onInvalid={(e) => {
                           e.preventDefault()
-                          setNotification('Please enter a valid last name (letters only, minimum 2 characters)')
+                          setNotification(
+                            'Please enter a valid last name (letters only, minimum 2 characters)'
+                          )
                         }}
                         placeholder="Enter last name"
                         required
@@ -532,7 +538,9 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                     }
                     onInvalid={(e) => {
                       e.preventDefault()
-                      setNotification('Please enter a valid email address (e.g. user@example.com)')
+                      setNotification(
+                        'Please enter a valid email address (e.g. user@example.com)'
+                      )
                     }}
                     placeholder="user@example.com"
                     required
@@ -559,7 +567,9 @@ const RegisterRoles: React.FC<RegisterroleProps> = ({ isSidebarOpen }) => {
                     }
                     onInvalid={(e) => {
                       e.preventDefault()
-                      setNotification('Please enter a valid phone number (digits, spaces, +, -, (, ) only, minimum 7 digits)')
+                      setNotification(
+                        'Please enter a valid phone number (digits, spaces, +, -, (, ) only, minimum 7 digits)'
+                      )
                     }}
                     placeholder="Enter phone number (e.g. +64 21 123 4567)"
                     required

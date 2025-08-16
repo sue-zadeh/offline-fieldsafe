@@ -6,15 +6,7 @@ import MapLoader from './MapLoader'
 import AddObjectives from './addobjective'
 import AddRisk from './addrisk'
 import AddHazard from './addhazard'
-import {
-  Navbar,
-  Nav,
-  Form,
-  Button,
-  Col,
-  Row,
-  Alert,
-} from 'react-bootstrap'
+import { Navbar, Nav, Form, Button, Col, Row, Alert } from 'react-bootstrap'
 
 const OCEAN_BLUE = '#0094B6'
 
@@ -127,7 +119,7 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
         originalData,
         selectedObjectives,
         mapCenter,
-        markerPos
+        markerPos,
       }
       setProjectFormData(currentFormData)
     }
@@ -259,7 +251,7 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
   // Navigate to objectives page after validating current form
   const handleNext = async () => {
     if (!validateFormData()) return
-    
+
     // Check project name uniqueness if not editing
     if (!isEdit) {
       try {
@@ -274,7 +266,7 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
         console.warn('Client uniqueness check error:', error)
       }
     }
-    
+
     // Store current form data and navigate to objectives tab
     const currentFormData = {
       name,
@@ -296,7 +288,7 @@ const AddProject: React.FC<AddProjectProps> = ({ isSidebarOpen }) => {
       originalData,
       selectedObjectives,
       mapCenter,
-      markerPos
+      markerPos,
     }
     setProjectFormData(currentFormData)
     handleNavClick('objectives')
