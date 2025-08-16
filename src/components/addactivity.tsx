@@ -307,13 +307,15 @@ const AddActivity: React.FC<AddActivityProps> = ({}) => {
           alert('Activity created successfully!')
         } else {
           // For offline saving, we need to include the project name
-          const selectedProject = projects.find(p => p.id === activity.project_id)
+          const selectedProject = projects.find(
+            (p) => p.id === activity.project_id
+          )
           const activityWithProjectName = {
             ...activity,
             projectName: selectedProject?.name || '',
-            timestamp: Date.now()
+            timestamp: Date.now(),
           }
-          
+
           await saveOfflineItem({
             type: 'activity',
             data: activityWithProjectName,

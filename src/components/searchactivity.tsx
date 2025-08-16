@@ -9,10 +9,7 @@ import {
   Navbar,
   Nav,
 } from 'react-bootstrap'
-import {
-  cacheActivity,
-  getCachedActivity,
-} from '../utils/localDB'
+import { cacheActivity, getCachedActivity } from '../utils/localDB'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { FaSearch, FaArrowRight } from 'react-icons/fa' // <== removed FaTrashAlt
 
@@ -56,9 +53,10 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
         let serverActivities: ActivityRow[] = []
         let cachedActivities: ActivityRow[] = []
         let offlineActivities: ActivityRow[] = []
-        
+
         // Always get cached activities (activities from previous online sessions)
-        const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+        const { getCachedActivities, getSyncedItems, getUnsyncedItems } =
+          await import('../utils/localDB')
         cachedActivities = await getCachedActivities()
         console.log('📦 Cached activities found:', cachedActivities.length)
 
@@ -75,7 +73,10 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             console.log('🔄 Fetching activities from API...')
             const res = await axios.get<ActivityRow[]>('/api/activities')
             serverActivities = res.data
-            console.log('✅ Fetched activities from API:', serverActivities.length)
+            console.log(
+              '✅ Fetched activities from API:',
+              serverActivities.length
+            )
 
             // Cache the fresh server data
             const { cacheActivities } = await import('../utils/localDB')
@@ -94,14 +95,14 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
         // Merge activities: server/cached activities + offline activities
         // Remove duplicates by preferring offline activities over cached ones
         const activityMap = new Map<number, ActivityRow>()
-        
+
         // First add all server/cached activities
-        serverActivities.forEach(activity => {
+        serverActivities.forEach((activity) => {
           activityMap.set(activity.id, activity)
         })
-        
+
         // Then add offline activities, which will override any duplicates
-        offlineActivities.forEach(activity => {
+        offlineActivities.forEach((activity) => {
           const id = activity.id || activity.timestamp
           if (id) {
             activityMap.set(id, activity)
@@ -117,7 +118,8 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
 
         // Ultimate fallback: just show whatever we can find locally
         try {
-          const { getCachedActivities, getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+          const { getCachedActivities, getSyncedItems, getUnsyncedItems } =
+            await import('../utils/localDB')
           const cached = await getCachedActivities()
           const synced = await getSyncedItems()
           const unsynced = await getUnsyncedItems()
@@ -126,14 +128,17 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             .map((i) => ({ ...i.data, id: i.data.id || i.timestamp }))
 
           const activityMap = new Map<number, ActivityRow>()
-          cached.forEach(activity => activityMap.set(activity.id, activity))
-          offline.forEach(activity => {
+          cached.forEach((activity) => activityMap.set(activity.id, activity))
+          offline.forEach((activity) => {
             const id = activity.id || activity.timestamp
             if (id) activityMap.set(id, activity)
           })
 
           const fallbackActivities = Array.from(activityMap.values())
-          console.log('📦 Fallback activities loaded:', fallbackActivities.length)
+          console.log(
+            '📦 Fallback activities loaded:',
+            fallbackActivities.length
+          )
           setAllActivities(fallbackActivities)
         } catch (cacheErr) {
           console.error('❌ Critical error loading any activities:', cacheErr)
@@ -217,7 +222,9 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
       } else {
         // Check offline queue for activities (both synced and unsynced)
         try {
-          const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
+          const { getSyncedItems, getUnsyncedItems } = await import(
+            '../utils/localDB'
+          )
           const synced = await getSyncedItems()
           const unsynced = await getUnsyncedItems()
           const allOfflineItems = [...synced, ...unsynced]
@@ -225,10 +232,11 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
             .map((i) => i.data)
 
           // Check both id and timestamp fields for offline activities
-          const offlineActivity = allOfflineItems.find((a) => 
-            a.id === act.id || 
-            a.timestamp === act.id || 
-            (act.timestamp && a.timestamp === act.timestamp)
+          const offlineActivity = allOfflineItems.find(
+            (a) =>
+              a.id === act.id ||
+              a.timestamp === act.id ||
+              (act.timestamp && a.timestamp === act.timestamp)
           )
           if (offlineActivity) {
             activityFound = true
@@ -245,11 +253,13 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
           state: { activityId: act.id, fromSearch: true },
         })
       } else {
-        alert('Activity details are not available offline. Please connect to the internet to view this activity.')
+        alert(
+          'Activity details are not available offline. Please connect to the internet to view this activity.'
+        )
       }
     }
   }
-  
+
   return (
     <div
       className={`container-fluid ${
@@ -331,8 +341,10 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
       {/* Offline info alert */}
       {!navigator.onLine && allActivities.length === 0 && (
         <Alert variant="info" className="text-center">
-          No activities are available offline.<br />
-          Please connect to the internet and open the app at least once to cache activities for offline use.
+          No activities are available offline.
+          <br />
+          Please connect to the internet and open the app at least once to cache
+          activities for offline use.
         </Alert>
       )}
 
@@ -369,14 +381,13 @@ const SearchActivity: React.FC<SearchActivityProps> = ({ isSidebarOpen }) => {
           {filteredActivities.length === 0 ? (
             <tr>
               <td colSpan={7} className="text-center p-4">
-                {allActivities.length === 0 
+                {allActivities.length === 0
                   ? 'No activities found. Create your first activity to get started.'
-                  : searchTerm 
-                    ? `No activities match "${searchTerm}"`
-                    : activeTab === 'activeactivities' 
-                      ? 'No active activities found.'
-                      : 'No archived activities found.'
-                }
+                  : searchTerm
+                  ? `No activities match "${searchTerm}"`
+                  : activeTab === 'activeactivities'
+                  ? 'No active activities found.'
+                  : 'No archived activities found.'}
               </td>
             </tr>
           ) : (

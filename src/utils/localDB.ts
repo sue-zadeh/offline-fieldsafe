@@ -129,7 +129,31 @@ export async function getAllOfflineItems(type: string) {
 export const saveOfflineItem = async (item: Omit<OfflineItem, 'id'>) => {
   const db = await getDB()
   const id = Date.now()
-  await db.put(OFFLINE_QUEUE, { ...item, id })
+  const offlineItem = { ...item, id }
+  
+  // Save to offline queue
+  await db.put(OFFLINE_QUEUE, offlineItem)
+  
+  // IMPORTANT: Also store activities directly in the activity store for immediate retrieval
+  if (item.type === 'activity' && item.data) {
+    const activityData = {
+      ...item.data,
+      id: item.data.id || id, // Use provided ID or generate one
+      offline: true,
+      timestamp: Date.now()
+    }
+    
+    // Store in activity store so getCachedActivity can find it
+    const activityTx = db.transaction(ACTIVITY_STORE, 'readwrite')
+    const activityStore = activityTx.objectStore(ACTIVITY_STORE)
+    await activityStore.put(activityData)
+    await activityTx.done
+    
+    // Also store in localStorage as backup
+    localStorage.setItem(`offline_activity_${activityData.id}`, JSON.stringify(activityData))
+    
+    console.log('📝 Stored offline activity:', activityData.id, activityData)
+  }
 }
 
 export const getUnsyncedItems = async (): Promise<OfflineItem[]> => {
@@ -170,13 +194,10 @@ export const deleteOfflineItem = async (id: number) => {
 
 export const replayQueue = async () => {
   const unsynced = await getUnsyncedItems()
-  console.log(`🔄 Starting sync for ${unsynced.length} unsynced items`)
-  
   for (const item of unsynced) {
     try {
       let endpoint: string
       let method = 'POST'
-      let requestBody = item.data
       
       if (item.type === 'volunteer') {
         endpoint = '/api/volunteers'
@@ -185,7 +206,6 @@ export const replayQueue = async () => {
       } else if (item.type === 'volunteer_delete') {
         endpoint = `/api/volunteers/${item.data.id}`
         method = 'DELETE'
-        requestBody = undefined
       } else if (item.type === 'activity_volunteer_assignment') {
         endpoint = '/api/activity_volunteer'
       } else if (item.type === 'activity_staff_assignment') {
@@ -193,21 +213,16 @@ export const replayQueue = async () => {
       } else if (item.type === 'activity_risk') {
         endpoint = '/api/activity_risks'
       } else if (item.type === 'activity_hazard') {
-        // Determine endpoint based on hazard type and map field names
         if (item.data.hazard_type === 'site') {
           endpoint = '/api/activity_site_hazards'
-          // Map hazard_id to site_hazard_id
-          requestBody = { ...item.data }
-          requestBody.site_hazard_id = requestBody.hazard_id
-          delete requestBody.hazard_id
-          delete requestBody.hazard_type
+          item.data.site_hazard_id = item.data.hazard_id
+          delete item.data.hazard_id
+          delete item.data.hazard_type
         } else {
           endpoint = '/api/activity_activity_people_hazards'
-          // Map hazard_id to activity_people_hazard_id
-          requestBody = { ...item.data }
-          requestBody.activity_people_hazard_id = requestBody.hazard_id
-          delete requestBody.hazard_id
-          delete requestBody.hazard_type
+          item.data.activity_people_hazard_id = item.data.hazard_id
+          delete item.data.hazard_id
+          delete item.data.hazard_type
         }
       } else if (item.type === 'activity_checklist_assignment') {
         endpoint = '/api/activity_checklist'
@@ -221,59 +236,60 @@ export const replayQueue = async () => {
       } else if (item.type === 'activity_predator') {
         endpoint = '/api/activity_predator'
       } else {
-        console.warn(`⚠️ Unknown sync type: ${item.type}`)
         continue
       }
 
-      console.log(`🔄 Syncing ${item.type} to ${endpoint}`)
+      // For offline activities, clean up the data before syncing
+      let dataToSync = { ...item.data }
+      if (item.type === 'activity') {
+        // Remove offline-specific fields
+        delete dataToSync.offline
+        delete dataToSync.created_offline
+        delete dataToSync.timestamp
+        // Remove temporary ID for new activities
+        if (dataToSync.id && dataToSync.id > 1000000000000) { // Timestamp-based ID
+          delete dataToSync.id
+        }
+      }
 
       const res = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: method !== 'GET' && requestBody ? JSON.stringify(requestBody) : undefined,
+        body: method !== 'DELETE' ? JSON.stringify(dataToSync) : undefined,
       })
 
       if (res.ok) {
         await markItemSynced(item.id)
         
-        // Cache the response data for some types
         if (item.type === 'volunteer') {
-          try {
-            const data = await res.json()
-            if (data && data.id) {
-              await cacheVolunteers([data])
-            }
-          } catch (e) {
-            console.warn('Could not cache volunteer response:', e)
-          }
+          const data = await res.json()
+          await cacheVolunteers([data])
         }
         if (item.type === 'activity') {
-          try {
-            const data = await res.json()
-            if (data && (data.activityId || data.id)) {
-              // Server returns { activityId: xxx, message: ... } for new activities
-              const activityForCache = { 
-                ...requestBody, 
-                id: data.activityId || data.id 
-              }
-              await cacheActivity(activityForCache)
-            }
-          } catch (e) {
-            console.warn('Could not cache activity response:', e)
+          const data = await res.json()
+          console.log('✅ Activity synced successfully, updating cache:', data)
+          
+          // Update the activity store with the server response
+          await cacheActivity(data)
+          
+          // Remove the old offline activity if it had a temporary ID
+          if (item.data.id && item.data.id > 1000000000000) {
+            const db = await getDB()
+            const tx = db.transaction(ACTIVITY_STORE, 'readwrite')
+            const store = tx.objectStore(ACTIVITY_STORE)
+            await store.delete(item.data.id)
+            await tx.done
+            console.log('🧹 Removed temporary offline activity:', item.data.id)
           }
         }
-        
-        console.log(`✅ Synced ${item.type} item successfully`)
+        console.log(`✅ Synced ${item.type} item`)
       } else {
-        const errorText = await res.text().catch(() => 'Unknown error')
-        console.warn(`❌ Failed to sync ${item.type} item: ${res.status} - ${errorText}`)
+        console.warn(`❌ Failed to sync ${item.type} item: ${res.status}`)
       }
     } catch (err) {
       console.warn(`❌ Sync failed for ${item.type}:`, err)
     }
   }
-  
-  console.log('🔄 Sync queue replay completed')
 }
 
 export const queueVolunteerUpdate = (user: User) => {
@@ -298,11 +314,112 @@ export async function cacheActivity(activity: any) {
 }
 
 export async function getCachedActivity(activityId: number) {
+  console.log('🔍 Looking for cached activity:', activityId)
+  
   const db = await getDB()
   const tx = db.transaction(ACTIVITY_STORE, 'readonly')
   const store = tx.objectStore(ACTIVITY_STORE)
-  return await store.get(activityId)
+  
+  // Try to get from IndexedDB first
+  let activity = await store.get(activityId)
+  if (activity) {
+    console.log('✅ Found activity in IndexedDB:', activity)
+    return activity
+  }
+  
+  // Try string version of ID
+  activity = await store.get(String(activityId))
+  if (activity) {
+    console.log('✅ Found activity in IndexedDB (string ID):', activity)
+    return activity
+  }
+  
+  // Try localStorage backup
+  const localStorageKeys = [
+    `offline_activity_${activityId}`,
+    `activity_${activityId}`,
+    `pendingActivity_${activityId}`,
+    `newActivity_${activityId}`
+  ]
+  
+  for (const key of localStorageKeys) {
+    try {
+      const stored = localStorage.getItem(key)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        console.log('✅ Found activity in localStorage:', key, parsed)
+        return parsed
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to parse localStorage key:', key)
+    }
+  }
+  
+  // Search through all activities in the store
+  const allActivities = await store.getAll()
+  for (const act of allActivities) {
+    if (act.id == activityId || act.id == String(activityId)) {
+      console.log('✅ Found activity by searching all:', act)
+      return act
+    }
+  }
+  
+  // Last resort: check offline queue
+  try {
+    const queueTx = db.transaction(OFFLINE_QUEUE, 'readonly')
+    const queueStore = queueTx.objectStore(OFFLINE_QUEUE)
+    const allItems = await queueStore.getAll()
+    
+    for (const item of allItems) {
+      if (item.type === 'activity' && item.data && (item.data.id == activityId || item.data.id == String(activityId))) {
+        console.log('✅ Found activity in offline queue:', item.data)
+        return item.data
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Failed to search offline queue:', e)
+  }
+  
+  console.log('❌ Activity not found anywhere:', activityId)
+  return null
 }
+
+// Add a new function to ensure offline activities are properly stored
+export async function storeOfflineActivity(activityData: any) {
+  console.log('💾 Storing offline activity:', activityData)
+  
+  const db = await getDB()
+  const activityId = activityData.id || Date.now()
+  
+  const completeActivity = {
+    ...activityData,
+    id: activityId,
+    offline: true,
+    created_offline: true,
+    timestamp: Date.now()
+  }
+  
+  // Store in activity store
+  const tx = db.transaction(ACTIVITY_STORE, 'readwrite')
+  const store = tx.objectStore(ACTIVITY_STORE)
+  await store.put(completeActivity)
+  await tx.done
+  
+  // Store in localStorage as backup
+  localStorage.setItem(`offline_activity_${activityId}`, JSON.stringify(completeActivity))
+  
+  // Also add to offline queue for syncing
+  await saveOfflineItem({
+    type: 'activity',
+    data: completeActivity,
+    synced: false,
+    timestamp: Date.now()
+  })
+  
+  console.log('✅ Offline activity stored successfully:', activityId)
+  return completeActivity
+}
+
 export async function cacheProjects(projects: any[]) {
   const db = await getDB()
   const tx = db.transaction(PROJECT_STORE, 'readwrite')

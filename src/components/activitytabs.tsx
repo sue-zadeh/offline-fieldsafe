@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button } from 'react-bootstrap'
 import { useLocation } from 'react-router-dom'
 import axios from 'axios'
-import {cacheActivity, getCachedActivity } from '../utils/localDB'
+import { cacheActivity, getCachedActivity } from '../utils/localDB'
 
 import AddActivity from './addactivity'
 import ActivityRisk from './activityrisk'
@@ -56,100 +56,220 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
   }, [location.state])
 
   async function loadActivityDetails(id: number) {
-    try {
-      if (navigator.onLine) {
-        const res = await axios.get(`/api/activities/${id}`)
-        const data = res.data
-        setSelectedActivityId(data.id)
-        setSelectedActivityName(data.activity_name || data.title || '')
-        setSelectedProjectName(data.projectName || '')
-        await cacheActivity(data) // cache for offline
-      } else {
-        // First try cached activities (from server)
-        let offline = await getCachedActivity(id)
-        
-        // If not found in cache, check offline queue
-        if (!offline) {
-          try {
-            const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
-            const synced = await getSyncedItems()
-            const unsynced = await getUnsyncedItems()
-            const allOfflineItems = [...synced, ...unsynced]
-              .filter((i) => i.type === 'activity')
-              .map((i) => i.data)
+    console.log('🔍 Loading activity details for ID:', id, 'Online:', navigator.onLine)
 
-            // Check both id and timestamp fields for offline activities
-            offline = allOfflineItems.find((a) => 
-              a.id === id || 
-              a.timestamp === id ||
-              (typeof a.id === 'string' && a.id.includes(id.toString()))
-            )
-            
-            if (offline) {
-              // Cache the offline activity for future access
-              await cacheActivity(offline)
-            }
-          } catch (err) {
-            console.error('Error checking offline activity queue:', err)
+    try {
+      // Always try offline first, regardless of online status
+      let activityData = await tryOfflineRetrieval(id)
+
+      if (activityData) {
+        console.log('✅ Found activity offline:', activityData)
+        setSelectedActivityId(activityData.id || id)
+        setSelectedActivityName(
+          activityData.activity_name ||
+            activityData.title ||
+            activityData.name ||
+            activityData.activityName ||
+            'Offline Activity'
+        )
+        setSelectedProjectName(
+          activityData.projectName ||
+            activityData.project_name ||
+            activityData.project ||
+            'Offline Project'
+        )
+        return
+      }
+
+      // If not found offline and we're online, try API
+      if (navigator.onLine) {
+        console.log('🌐 Trying API for activity:', id)
+        try {
+          const res = await axios.get(`/api/activities/${id}`)
+          const data = res.data
+          setSelectedActivityId(data.id)
+          setSelectedActivityName(data.activity_name || data.title || data.name || '')
+          setSelectedProjectName(data.projectName || data.project_name || '')
+          await cacheActivity(data)
+          return
+        } catch (apiError) {
+          console.warn('API failed, trying offline again:', apiError)
+          // API failed, try offline once more
+          activityData = await tryOfflineRetrieval(id)
+          if (activityData) {
+            setSelectedActivityId(activityData.id || id)
+            setSelectedActivityName(activityData.activity_name || activityData.title || 'Offline Activity')
+            setSelectedProjectName(activityData.projectName || 'Offline Project')
+            return
           }
-        }
-        
-        if (offline) {
-          setSelectedActivityId(offline.id || offline.timestamp || id)
-          setSelectedActivityName(
-            offline.activity_name || offline.title || 'Offline Activity'
-          )
-          setSelectedProjectName(offline.projectName || 'Offline Project')
-        } else {
-          console.warn('⚠️ Activity not found locally:', id)
-          // Don't show alert - just handle gracefully
-          setSelectedActivityId(null)
-          setSelectedActivityName('')
-          setSelectedProjectName('')
         }
       }
-    } catch (err) {
-      if (!navigator.onLine) {
-        // Offline fallback - try to find in offline queue
-        try {
-          const { getSyncedItems, getUnsyncedItems } = await import('../utils/localDB')
-          const synced = await getSyncedItems()
-          const unsynced = await getUnsyncedItems()
-          const allOfflineItems = [...synced, ...unsynced]
-            .filter((i) => i.type === 'activity')
-            .map((i) => i.data)
 
-          const offline = allOfflineItems.find((a) => 
-            a.id === id || 
-            a.timestamp === id ||
-            (typeof a.id === 'string' && a.id.includes(id.toString()))
-          )
-          
-          if (offline) {
-            setSelectedActivityId(offline.id || offline.timestamp || id)
-            setSelectedActivityName(
-              offline.activity_name || offline.title || 'Offline Activity'
-            )
-            setSelectedProjectName(offline.projectName || 'Offline Project')
-            // Cache for future access
-            await cacheActivity(offline)
-          } else {
-            console.warn('⚠️ Activity not found in offline mode:', id)
-            setSelectedActivityId(null)
-            setSelectedActivityName('')
-            setSelectedProjectName('')
+      // Last resort: create placeholder for offline viewing
+      console.log('⚠️ Activity not found anywhere, creating placeholder for ID:', id)
+      setSelectedActivityId(id)
+      setSelectedActivityName(`Activity ${id} (Offline)`)
+      setSelectedProjectName('Unknown Project')
+
+    } catch (err) {
+      console.error('❌ Error in loadActivityDetails:', err)
+      
+      // Final fallback
+      setSelectedActivityId(id)
+      setSelectedActivityName(`Activity ${id} (Offline)`)
+      setSelectedProjectName('Unknown Project')
+    }
+  }
+
+  async function tryOfflineRetrieval(id: number): Promise<any> {
+    console.log('🔄 Trying offline retrieval for ID:', id)
+
+    // Strategy 1: Try getCachedActivity
+    try {
+      let offline = await getCachedActivity(id)
+      if (offline) {
+        console.log('✅ Found via getCachedActivity:', offline)
+        return offline
+      }
+    } catch (e) {
+      console.warn('getCachedActivity failed:', e)
+    }
+
+    // Strategy 2: Try localStorage with comprehensive key search
+    const possibleKeys = [
+      `activity_${id}`,
+      `offline_activity_${id}`,
+      `cached_activity_${id}`,
+      `activity_data_${id}`,
+      `pendingActivity_${id}`,
+      `newActivity_${id}`,
+      `fieldsafe_activity_${id}`,
+      `activity-${id}`,
+      `offlineActivity_${id}`,
+      `temp_activity_${id}`,
+      String(id),
+    ]
+
+    for (const key of possibleKeys) {
+      try {
+        const stored = localStorage.getItem(key)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (parsed && (parsed.id == id || parsed.id == String(id))) {
+            console.log('✅ Found in localStorage with key:', key, parsed)
+            return parsed
           }
-        } catch (offlineErr) {
-          console.error('❌ Failed to load activity details (offline)', offlineErr)
-          setSelectedActivityId(null)
-          setSelectedActivityName('')
-          setSelectedProjectName('')
         }
-      } else {
-        console.error('❌ Failed to load activity details (online)', err)
-        alert('Failed to load activity.')
+      } catch (e) {
+        console.warn('⚠️ Failed to parse localStorage key:', key, e)
       }
     }
+
+    // Strategy 3: Search ALL localStorage keys for this activity ID
+    try {
+      const allKeys = Object.keys(localStorage)
+      console.log('🔍 Searching through all localStorage keys:', allKeys.length)
+      
+      for (const key of allKeys) {
+        try {
+          const stored = localStorage.getItem(key)
+          if (stored && stored.includes(String(id))) {
+            const parsed = JSON.parse(stored)
+            if (parsed && (parsed.id == id || parsed.id == String(id))) {
+              console.log('✅ Found by comprehensive search in key:', key, parsed)
+              return parsed
+            }
+          }
+        } catch (e) {
+          // Skip invalid JSON
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Comprehensive localStorage search failed:', e)
+    }
+
+    // Strategy 4: Try IndexedDB - FIX THE BUG HERE
+    try {
+      const indexedDBResult = await tryIndexedDBRetrieval(id)
+      if (indexedDBResult) {
+        return indexedDBResult
+      }
+    } catch (e) {
+      console.warn('IndexedDB retrieval failed:', e)
+    }
+
+    console.log('❌ Activity not found in any offline storage for ID:', id)
+    return null
+  }
+
+  async function tryIndexedDBRetrieval(id: number): Promise<any> {
+    if (!('indexedDB' in window)) return null
+
+    try {
+      // Use the correct database name from localDB.ts
+      const dbRequest = indexedDB.open('FieldSafeDB', 5)
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        dbRequest.onsuccess = () => resolve(dbRequest.result)
+        dbRequest.onerror = () => reject(dbRequest.error)
+        dbRequest.onblocked = () => reject(new Error('IndexedDB blocked'))
+      })
+
+      const storeNames = [
+        'activities',
+        'offline-queue', // This is where offline activities might be stored
+        'volunteers',
+        'projects'
+      ]
+
+      for (const storeName of storeNames) {
+        if (db.objectStoreNames.contains(storeName)) {
+          try {
+            const transaction = db.transaction([storeName], 'readonly')
+            const store = transaction.objectStore(storeName)
+            
+            if (storeName === 'offline-queue') {
+              // Search through offline queue for activities - FIX THE ITERATION ERROR
+              const getAllRequest = store.getAll()
+              const allItems = await new Promise<any[]>((resolve, reject) => {
+                getAllRequest.onsuccess = () => resolve(getAllRequest.result)
+                getAllRequest.onerror = () => reject(getAllRequest.error)
+              })
+              
+              for (const item of allItems) {
+                if (item.type === 'activity' && item.data && (item.data.id == id || item.data.id == String(id))) {
+                  console.log('✅ Found activity in offline queue:', item.data)
+                  db.close()
+                  return item.data
+                }
+              }
+            } else {
+              // Try both number and string versions for direct lookup
+              for (const searchId of [id, String(id)]) {
+                const getRequest = store.get(searchId)
+                const result = await new Promise((resolve) => {
+                  getRequest.onsuccess = () => resolve(getRequest.result)
+                  getRequest.onerror = () => resolve(null)
+                })
+
+                if (result) {
+                  console.log('✅ Found in IndexedDB store:', storeName, result)
+                  db.close()
+                  return result
+                }
+              }
+            }
+          } catch (storeError) {
+            console.warn(`⚠️ Error accessing store ${storeName}:`, storeError)
+          }
+        }
+      }
+
+      db.close()
+    } catch (e) {
+      console.warn('⚠️ IndexedDB search failed:', e)
+    }
+
+    return null
   }
 
   const handleActivityUpdate = (id: number, name: string, project: string) => {
@@ -175,7 +295,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
             id="step-selector"
             className="form-select mb-4"
             value={currentStep}
-            onChange={(e) => setCurrentStep(Number(e.target.value))}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setCurrentStep(Number(e.target.value))
+            }
           >
             {steps.map((label, index) => (
               <option key={index} value={index}>{`${
@@ -240,10 +362,6 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
   }
 
   const renderStepContent = () => {
-    if (!selectedActivityId && currentStep !== 0) {
-      return <h5>Please complete the "Details" tab first.</h5>
-    }
-
     switch (currentStep) {
       case 0:
         return (
@@ -255,6 +373,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           />
         )
       case 1:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">
@@ -267,6 +388,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           </>
         )
       case 2:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">
@@ -279,6 +403,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           </>
         )
       case 3:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">
@@ -291,6 +418,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           </>
         )
       case 4:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">
@@ -304,6 +434,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           </>
         )
       case 5:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">
@@ -316,6 +449,9 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
           </>
         )
       case 6:
+        if (!selectedActivityId) {
+          return <h5>Please complete the "Details" tab first.</h5>
+        }
         return (
           <>
             <h5 className="my-3 fw-bold">

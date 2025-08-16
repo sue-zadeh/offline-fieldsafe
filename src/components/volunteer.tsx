@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   getSyncedItems,
   getUnsyncedItems,
@@ -24,7 +24,6 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [notification, setNotification] = useState<string | null>(null)
   const navigate = useNavigate()
-  const location = useLocation()
 
   const fetchAllLeads = async () => {
     try {
@@ -70,31 +69,7 @@ const Volunteer: React.FC<VolunteerProps> = ({ isSidebarOpen }) => {
 
   useEffect(() => {
     fetchAllLeads()
-    
-    // Add listener for when page becomes visible (user navigates back)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchAllLeads()
-      }
-    }
-    
-    const handleFocus = () => {
-      fetchAllLeads()
-    }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', handleFocus)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', handleFocus)
-    }
   }, [])
-
-  // Refresh data when navigating to this page
-  useEffect(() => {
-    fetchAllLeads()
-  }, [location.pathname])
 
   useEffect(() => {
     const doSearch = async () => {
