@@ -19,7 +19,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps
 
-      # If your tests need a web server, your playwright.config.ts webServer will handle it
+      # If tests need a web server, playwright.config.ts webServer will handle it
       - run: npm test
 
       - name: Upload Playwright HTML report
