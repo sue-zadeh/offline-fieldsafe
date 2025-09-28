@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  playwright-tests:
+    image: mcr.microsoft.com/playwright:v1.40.0-focal
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: npm run test
+    environment:
+      - CI=true

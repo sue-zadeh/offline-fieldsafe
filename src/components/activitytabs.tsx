@@ -216,7 +216,7 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
 
       const storeNames = [
         'activities',
-        'offline-queue', // This is where offline activities might be stored
+        'offline-queue',
         'volunteers',
         'projects'
       ]
@@ -228,33 +228,48 @@ const ActivityTabs: React.FC<ActivityTabsProps> = ({ isSidebarOpen }) => {
             const store = transaction.objectStore(storeName)
             
             if (storeName === 'offline-queue') {
-              // Search through offline queue for activities - FIX THE ITERATION ERROR
-              const getAllRequest = store.getAll()
-              const allItems = await new Promise<any[]>((resolve, reject) => {
-                getAllRequest.onsuccess = () => resolve(getAllRequest.result)
-                getAllRequest.onerror = () => reject(getAllRequest.error)
-              })
-              
-              for (const item of allItems) {
-                if (item.type === 'activity' && item.data && (item.data.id == id || item.data.id == String(id))) {
-                  console.log('✅ Found activity in offline queue:', item.data)
-                  db.close()
-                  return item.data
+              try {
+                const getAllRequest = store.getAll()
+                const allItems = await new Promise<any[]>((resolve, reject) => {
+                  getAllRequest.onsuccess = () => resolve(getAllRequest.result || [])
+                  getAllRequest.onerror = () => reject(getAllRequest.error)
+                })
+                
+                // Fixed: Safe iteration with proper null checks
+                if (Array.isArray(allItems) && allItems.length > 0) {
+                  for (const item of allItems) {
+                    if (item && 
+                        typeof item === 'object' && 
+                        item.type === 'activity' && 
+                        item.data && 
+                        typeof item.data === 'object' &&
+                        (item.data.id == id || item.data.id == String(id))) {
+                      console.log('✅ Found activity in offline queue:', item.data)
+                      db.close()
+                      return item.data
+                    }
+                  }
                 }
+              } catch (queueError) {
+                console.warn('⚠️ Error processing offline queue:', queueError)
               }
             } else {
               // Try both number and string versions for direct lookup
               for (const searchId of [id, String(id)]) {
-                const getRequest = store.get(searchId)
-                const result = await new Promise((resolve) => {
-                  getRequest.onsuccess = () => resolve(getRequest.result)
-                  getRequest.onerror = () => resolve(null)
-                })
+                try {
+                  const getRequest = store.get(searchId)
+                  const result = await new Promise((resolve) => {
+                    getRequest.onsuccess = () => resolve(getRequest.result)
+                    getRequest.onerror = () => resolve(null)
+                  })
 
-                if (result) {
-                  console.log('✅ Found in IndexedDB store:', storeName, result)
-                  db.close()
-                  return result
+                  if (result && typeof result === 'object') {
+                    console.log('✅ Found in IndexedDB store:', storeName, result)
+                    db.close()
+                    return result
+                  }
+                } catch (getError) {
+                  console.warn(`⚠️ Error getting item from ${storeName}:`, getError)
                 }
               }
             }

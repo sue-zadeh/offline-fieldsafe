@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 *.env
 *.env.production
+playwright-report/
+test-results/
+*.webm
+*.png
+.env
